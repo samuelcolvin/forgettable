@@ -1,5 +1,5 @@
-# Build stage - using nightly for edition 2024 support
-FROM rustlang/rust:nightly-bookworm AS builder
+# Build stage
+FROM rust:1.91-bookworm AS builder
 
 WORKDIR /app
 
