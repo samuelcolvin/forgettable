@@ -10,8 +10,9 @@
       "Bash(pnpm exec:*)",
       "Bash(pnpm dev)",
       "Bash(make:*)",
-      "Bash(DATABASE_URL=postgresql://postgres@localhost:5432 cargo r:*)",
-      "Bash(DATABASE_URL=postgresql://postgres@localhost:5432 make:*)"
+      "Bash(cargo:*)",
+      "WebFetch(domain:ai.pydantic.dev)",
+      "WebFetch(domain:fastapi.tiangolo.com)"
     ]
   }
 }

@@ -11,6 +11,8 @@ dependencies = [
 [dependency-groups]
 dev = [
     "basedpyright>=1.37.0",
+    "pytest>=8.0.0",
+    "requests>=2.32.0",
     "ruff>=0.14.10",
 ]
 
@@ -19,6 +21,7 @@ dev = [
 line-length = 120
 include = [
     "src/**/*.py",
+    "test_*.py",
 ]
 
 [tool.ruff.lint]
@@ -42,5 +45,5 @@ quote-style = "single"
 pythonVersion = "3.14"
 typeCheckingMode = "strict"
 reportUnnecessaryTypeIgnoreComment = true
-include = ["src"]
+include = ["src", "test_*.py"]
 venv = ".venv"
