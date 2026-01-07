@@ -8,7 +8,7 @@
       "Bash(curl:*)",
       "Bash(jq:*)",
       "Bash(pnpm exec:*)",
-      "Bash(pnpm dev)",
+      "Bash(pnpm:*)",
       "Bash(make:*)",
       "Bash(cargo:*)",
       "WebFetch(domain:ai.pydantic.dev)",

@@ -9,14 +9,13 @@ import type { BuildRequest, BuildOutput } from './schema.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SERVER_ROOT = path.resolve(__dirname, '..');
-const BUILD_DIR = path.join(SERVER_ROOT, 'tmp_build');
 
 export async function buildProject(request: BuildRequest): Promise<BuildOutput> {
   const buildId = randomUUID();
-  const tempDir = path.join(BUILD_DIR, `build-${buildId}`);
+  const tempDir = path.join(SERVER_ROOT, `tmp_build_${buildId}`);
   const distDir = path.join(tempDir, 'dist');
 
-  try {
+  {
     // Create temp directory
     await fs.mkdir(tempDir, { recursive: true });
 
@@ -30,6 +29,7 @@ export async function buildProject(request: BuildRequest): Promise<BuildOutput> 
     // Generate main.tsx entry point that imports App from ./app
     const mainTsx = `import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import 'tailwindcss';
 import App from './app';
 
 createRoot(document.getElementById('root')!).render(
@@ -82,10 +82,15 @@ createRoot(document.getElementById('root')!).render(
       cacheDir: path.join(SERVER_ROOT, 'node_modules/.vite'),
     });
 
-    // Read output files from dist/assets/
+    // Read output files from dist/
     const output: BuildOutput = {};
-    const assetsDir = path.join(distDir, 'assets');
 
+    // Read index.html
+    const indexHtmlPath = path.join(distDir, 'index.html');
+    output['index.html'] = await fs.readFile(indexHtmlPath, 'utf-8');
+
+    // Read assets from dist/assets/
+    const assetsDir = path.join(distDir, 'assets');
     try {
       const files = await fs.readdir(assetsDir);
       for (const file of files) {
@@ -101,15 +106,10 @@ createRoot(document.getElementById('root')!).render(
       throw new Error('Build produced no output files');
     }
 
-    if (Object.keys(output).length === 0) {
+    if (Object.keys(output).length <= 1) {
       throw new Error('Build produced no output files');
     }
 
     return output;
-  } finally {
-    // Clean up temp directory
-    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {
-      // Ignore cleanup errors
-    });
   }
 }

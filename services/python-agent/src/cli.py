@@ -47,20 +47,21 @@ def read_source_files(app_dir: Path) -> dict[str, str]:
     """Read existing TypeScript/TSX files from app directory.
 
     Args:
-        app_dir: Path to the app directory.
+        app_dir: Path to the app directory (reads from src/ subdirectory).
 
     Returns:
         Dict mapping file paths to their contents.
     """
     files: dict[str, str] = {}
+    src_dir = app_dir / 'src'
 
-    if not app_dir.exists():
-        print(f'Error: {app_dir} does not exist', file=sys.stderr)
+    if not src_dir.exists():
+        print(f'Error: {src_dir} does not exist', file=sys.stderr)
         sys.exit(1)
 
     for ext in ('*.ts', '*.tsx'):
-        for file_path in app_dir.rglob(ext):
-            rel_path = file_path.relative_to(app_dir)
+        for file_path in src_dir.rglob(ext):
+            rel_path = file_path.relative_to(src_dir)
             files[str(rel_path)] = file_path.read_text()
 
     return files
@@ -75,17 +76,18 @@ def write_output_files(
 
     Args:
         outdir: Base output directory.
-        source_files: Dict of source file paths to contents.
-        compiled_files: Dict of compiled file paths (assets/*) to contents.
+        source_files: Dict of source file paths to contents (written to src/).
+        compiled_files: Dict of compiled file paths to contents (written to dist/).
     """
     for file_path, content in source_files.items():
-        out_path = outdir / file_path
+        out_path = outdir / 'src' / file_path
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(content)
         print(f'Wrote {out_path}')
 
+    dist_dir = outdir / 'dist'
     for file_path, content in compiled_files.items():
-        out_path = outdir / 'dist' / file_path
+        out_path = dist_dir / file_path
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(content)
         print(f'Wrote {out_path}')
