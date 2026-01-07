@@ -7,7 +7,7 @@ from pydantic_ai import Agent, ModelRetry, RunContext, TextOutput
 
 from .models import AppDependencies, Diff, DiffHunk
 
-VALIDATION_ENDPOINT = 'http://localhost:3000'
+BUILD_ENDPOINT = 'http://localhost:3000/build'
 
 MODEL = 'gateway/anthropic:claude-sonnet-4-5' if os.environ.get('QUICK') else 'gateway/anthropic:claude-opus-4-5'
 
@@ -19,41 +19,42 @@ You are a React application builder. Create client-side React applications follo
 3. Every function and class must have a docstring
 4. Non-trivial logic must have concise explanation comments
 5. Use modern React patterns (hooks, functional components)
-6. Structure: src/App.tsx as entry, components in src/components/
+6. Structure: app.tsx as entry point, components in components/
 
 When creating files, use appropriate file paths like:
-- src/App.tsx for the main app component
-- src/components/ComponentName.tsx for components
-- src/types.ts for TypeScript type definitions
-- src/hooks/useHookName.ts for custom hooks
+- app.tsx for the main app component (required, default export)
+- components/ComponentName.tsx for components
+- types.ts for TypeScript type definitions
+- hooks/useHookName.ts for custom hooks
 
 Always provide a summary of what you built and list your design decisions."""
 
 
 async def submit_files(ctx: RunContext[AppDependencies], text: str) -> str:
-    """Submit the generated files to the validation endpoint.
+    """Submit the generated files to the build endpoint.
 
     Args:
         ctx: The run context containing app dependencies with files.
         text: The summary text from the model.
 
     Returns:
-        The response data from the endpoint on success, or the summary text if validation is skipped.
+        The summary text. Compiled files are stored in ctx.deps.compiled_files.
 
     Raises:
-        ModelRetry: If the endpoint returns a non-200 status, allowing the model to retry.
+        ModelRetry: If the build endpoint returns a non-200 status, allowing the model to retry.
     """
     if os.environ.get('SKIP_VALIDATION'):
         return text
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            VALIDATION_ENDPOINT,
-            json={'files': ctx.deps.files, 'summary': text},
-            timeout=30.0,
+            BUILD_ENDPOINT,
+            json={'files': ctx.deps.files},
+            timeout=60.0,
         )
         if response.status_code == 200:
-            return response.text
+            ctx.deps.compiled_files = response.json()
+            return text
         raise ModelRetry(response.text)
 
 
@@ -62,6 +63,7 @@ agent: Agent[AppDependencies, str] = Agent(
     deps_type=AppDependencies,
     output_type=TextOutput(submit_files),
     instructions=SYSTEM_INSTRUCTIONS,
+    retries=10,
 )
 
 
@@ -142,7 +144,7 @@ def delete_file(ctx: RunContext[AppDependencies], file_path: str) -> str:
 async def run_agent(
     prompt: str,
     existing_files: dict[str, str] | None = None,
-) -> tuple[dict[str, str], dict[str, Diff], str]:
+) -> tuple[dict[str, str], dict[str, str], dict[str, Diff], str]:
     """Run the React builder agent.
 
     Args:
@@ -150,11 +152,12 @@ async def run_agent(
         existing_files: Optional dict of existing files when editing an app.
 
     Returns:
-        A tuple of (files, diffs, summary) where:
-        - files: The final state of all files
+        A tuple of (files, compiled_files, diffs, summary) where:
+        - files: The final state of all source files
+        - compiled_files: The compiled js/css/sourcemap files from the build
         - diffs: Any diffs that were applied (for edit operations)
-        - summary: The summary string returned from the validation endpoint
+        - summary: The summary string from the model
     """
     deps = AppDependencies(files=existing_files.copy() if existing_files else {})
     result = await agent.run(prompt, deps=deps)
-    return deps.files, deps.diffs, result.output
+    return deps.files, deps.compiled_files, deps.diffs, result.output

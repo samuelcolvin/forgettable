@@ -28,6 +28,7 @@ class CreateAppResponse(BaseModel):
     """Response containing generated files and summary."""
 
     files: dict[str, str]
+    compiled_files: dict[str, str]
     summary: str
 
 
@@ -43,6 +44,7 @@ class EditAppResponse(BaseModel):
 
     diffs: dict[str, Diff]
     files: dict[str, str]
+    compiled_files: dict[str, str]
     summary: str
 
 
@@ -52,3 +54,4 @@ class AppDependencies:
 
     files: dict[str, str] = field(default_factory=dict)
     diffs: dict[str, Diff] = field(default_factory=dict)
+    compiled_files: dict[str, str] = field(default_factory=dict)
