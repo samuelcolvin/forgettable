@@ -1,0 +1,6 @@
+target/
+*.py
+__pycache__/
+.git/
+README.md
+CLAUDE.md

@@ -16,6 +16,8 @@
       "Bash(make:*)",
       "Bash(cargo:*)",
       "Bash(go:*)",
+      "Bash(docker:*)",
+      "Bash(ls:*)",
       "WebFetch(domain:ai.pydantic.dev)",
       "WebFetch(domain:fastapi.tiangolo.com)"
     ]
