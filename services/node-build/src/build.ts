@@ -27,7 +27,20 @@ export async function buildProject(request: BuildRequest): Promise<BuildOutput> 
       await fs.writeFile(fullPath, content, 'utf-8');
     }
 
-    // Generate index.html that references the entry point
+    // Generate main.tsx entry point that imports App from ./app
+    const mainTsx = `import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import App from './app';
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>
+);
+`;
+    await fs.writeFile(path.join(tempDir, 'main.tsx'), mainTsx, 'utf-8');
+
+    // Generate index.html that references main.tsx
     const indexHtml = `<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -37,7 +50,7 @@ export async function buildProject(request: BuildRequest): Promise<BuildOutput> 
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/${request.entryPoint}"></script>
+    <script type="module" src="/main.tsx"></script>
   </body>
 </html>`;
     await fs.writeFile(path.join(tempDir, 'index.html'), indexHtml, 'utf-8');

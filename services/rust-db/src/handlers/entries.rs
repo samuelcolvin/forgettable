@@ -1,20 +1,19 @@
 use axum::{
+    Json,
     body::Bytes,
     extract::{Path, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
-    Json,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::error::{AppError, Result};
-use crate::models::{Entry, KeyInfo};
+use crate::{
+    error::{AppError, Result},
+    models::{Entry, KeyInfo},
+};
 
-pub async fn get_entry(
-    State(pool): State<PgPool>,
-    Path((project, key)): Path<(Uuid, String)>,
-) -> Result<Response> {
+pub async fn get_entry(State(pool): State<PgPool>, Path((project, key)): Path<(Uuid, String)>) -> Result<Response> {
     let entry: Option<Entry> = sqlx::query_as!(
         Entry,
         r#"
@@ -30,18 +29,10 @@ pub async fn get_entry(
 
     let entry = entry.ok_or_else(|| AppError::KeyNotFound(key))?;
 
-    Ok((
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, entry.mime_type)],
-        entry.content,
-    )
-        .into_response())
+    Ok((StatusCode::OK, [(header::CONTENT_TYPE, entry.mime_type)], entry.content).into_response())
 }
 
-pub async fn list_entries_all(
-    State(pool): State<PgPool>,
-    Path(project): Path<Uuid>,
-) -> Result<Json<Vec<KeyInfo>>> {
+pub async fn list_entries_all(State(pool): State<PgPool>, Path(project): Path<Uuid>) -> Result<Json<Vec<KeyInfo>>> {
     let entries: Vec<KeyInfo> = sqlx::query_as!(
         KeyInfo,
         r#"
@@ -98,16 +89,11 @@ pub async fn store_entry(
         .unwrap_or("application/octet-stream")
         .to_string();
 
-    // Verify project exists
-    let project_exists: bool =
-        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM projects WHERE id = $1)")
-            .bind(project)
-            .fetch_one(&pool)
-            .await?;
-
-    if !project_exists {
-        return Err(AppError::ProjectNotFound(project));
-    }
+    // Create project if it doesn't exist
+    sqlx::query("INSERT INTO projects (id) VALUES ($1) ON CONFLICT (id) DO NOTHING")
+        .bind(project)
+        .execute(&pool)
+        .await?;
 
     // Upsert entry
     sqlx::query(

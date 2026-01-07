@@ -18,21 +18,8 @@ HEALTH_URL = f"{BASE_URL}/health"
 @pytest.fixture
 def simple_react_app() -> dict[str, str]:
     return {
-        "src/main.tsx": """
-import React from "react";
-import ReactDOM from "react-dom/client";
-import { App } from "./App";
-
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
-""",
-        "src/App.tsx": """
-import React from "react";
-
-export function App() {
+        "app.tsx": """
+export default function App() {
   return <div>Hello, World!</div>;
 }
 """,
@@ -42,22 +29,10 @@ export function App() {
 @pytest.fixture
 def react_app_with_tailwind() -> dict[str, str]:
     return {
-        "src/main.tsx": """
-import React from "react";
-import ReactDOM from "react-dom/client";
-import { App } from "./App";
+        "app.tsx": """
 import "./styles.css";
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
-""",
-        "src/App.tsx": """
-import React from "react";
-
-export function App() {
+export default function App() {
   return (
     <div className="p-4 bg-blue-500 text-white rounded-lg">
       Hello, Tailwind!
@@ -65,7 +40,7 @@ export function App() {
   );
 }
 """,
-        "src/styles.css": '@import "tailwindcss";',
+        "styles.css": '@import "tailwindcss";',
     }
 
 
@@ -81,28 +56,15 @@ def test_health_returns_ok() -> None:
 # Validation tests
 
 
-def test_rejects_empty_entry_point() -> None:
-    payload = {"entryPoint": "", "files": {"src/main.tsx": "console.log('hello')"}}
-    response = requests.post(BUILD_URL, json=payload)
-    assert response.status_code == 400
-    assert "too_small" in response.text.lower() or ">=1" in response.text
-
-
 def test_rejects_empty_files() -> None:
-    payload = {"entryPoint": "src/main.tsx", "files": {}}
+    payload = {"files": {}}
     response = requests.post(BUILD_URL, json=payload)
     assert response.status_code == 400
     assert "at least one file" in response.text.lower()
 
 
-def test_rejects_missing_entry_point() -> None:
-    payload = {"files": {"src/main.tsx": "console.log('hello')"}}
-    response = requests.post(BUILD_URL, json=payload)
-    assert response.status_code == 400
-
-
 def test_rejects_missing_files() -> None:
-    payload = {"entryPoint": "src/main.tsx"}
+    payload = {}
     response = requests.post(BUILD_URL, json=payload)
     assert response.status_code == 400
 
@@ -119,7 +81,7 @@ def test_rejects_invalid_json() -> None:
 
 
 def test_builds_simple_react_app(simple_react_app: dict[str, str]) -> None:
-    payload = {"entryPoint": "src/main.tsx", "files": simple_react_app}
+    payload = {"files": simple_react_app}
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
@@ -129,7 +91,7 @@ def test_builds_simple_react_app(simple_react_app: dict[str, str]) -> None:
 
 
 def test_output_contains_js_file(simple_react_app: dict[str, str]) -> None:
-    payload = {"entryPoint": "src/main.tsx", "files": simple_react_app}
+    payload = {"files": simple_react_app}
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
@@ -139,7 +101,7 @@ def test_output_contains_js_file(simple_react_app: dict[str, str]) -> None:
 
 
 def test_output_contains_sourcemap(simple_react_app: dict[str, str]) -> None:
-    payload = {"entryPoint": "src/main.tsx", "files": simple_react_app}
+    payload = {"files": simple_react_app}
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
@@ -149,7 +111,7 @@ def test_output_contains_sourcemap(simple_react_app: dict[str, str]) -> None:
 
 
 def test_builds_app_with_tailwind(react_app_with_tailwind: dict[str, str]) -> None:
-    payload = {"entryPoint": "src/main.tsx", "files": react_app_with_tailwind}
+    payload = {"files": react_app_with_tailwind}
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
@@ -159,7 +121,7 @@ def test_builds_app_with_tailwind(react_app_with_tailwind: dict[str, str]) -> No
 
 
 def test_tailwind_processes_utilities(react_app_with_tailwind: dict[str, str]) -> None:
-    payload = {"entryPoint": "src/main.tsx", "files": react_app_with_tailwind}
+    payload = {"files": react_app_with_tailwind}
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
@@ -172,7 +134,7 @@ def test_tailwind_processes_utilities(react_app_with_tailwind: dict[str, str]) -
 
 
 def test_output_files_are_in_assets_directory(simple_react_app: dict[str, str]) -> None:
-    payload = {"entryPoint": "src/main.tsx", "files": simple_react_app}
+    payload = {"files": simple_react_app}
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
@@ -182,7 +144,7 @@ def test_output_files_are_in_assets_directory(simple_react_app: dict[str, str]) 
 
 
 def test_js_output_contains_react_code(simple_react_app: dict[str, str]) -> None:
-    payload = {"entryPoint": "src/main.tsx", "files": simple_react_app}
+    payload = {"files": simple_react_app}
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
@@ -197,13 +159,30 @@ def test_js_output_contains_react_code(simple_react_app: dict[str, str]) -> None
 # Build error tests
 
 
+def test_returns_error_for_missing_app() -> None:
+    payload = {
+        "files": {
+            "other.tsx": """
+export default function Other() {
+  return <div>Other</div>;
+}
+"""
+        },
+    }
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 400
+    assert "app" in response.text.lower() or "resolve" in response.text.lower()
+
+
 def test_returns_error_for_missing_import() -> None:
     payload = {
-        "entryPoint": "src/main.tsx",
         "files": {
-            "src/main.tsx": """
+            "app.tsx": """
 import { NonExistent } from "./missing";
-console.log(NonExistent);
+
+export default function App() {
+  return <div>{NonExistent}</div>;
+}
 """
         },
     }
@@ -214,11 +193,11 @@ console.log(NonExistent);
 
 def test_returns_error_for_syntax_error() -> None:
     payload = {
-        "entryPoint": "src/main.tsx",
         "files": {
-            "src/main.tsx": """
-const x = {
-  // missing closing brace
+            "app.tsx": """
+export default function App() {
+  return <div>
+  // missing closing tags
 """
         },
     }
@@ -228,8 +207,7 @@ const x = {
 
 def test_error_response_is_plain_text() -> None:
     payload = {
-        "entryPoint": "src/main.tsx",
-        "files": {"src/main.tsx": 'import "./nonexistent";'},
+        "files": {"app.tsx": 'import "./nonexistent";'},
     }
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 400
@@ -242,21 +220,12 @@ def test_error_response_is_plain_text() -> None:
 
 def test_builds_app_with_multiple_components() -> None:
     payload = {
-        "entryPoint": "src/main.tsx",
         "files": {
-            "src/main.tsx": """
-import React from "react";
-import ReactDOM from "react-dom/client";
-import { App } from "./App";
+            "app.tsx": """
+import Header from "./components/Header";
+import Footer from "./components/Footer";
 
-ReactDOM.createRoot(document.getElementById("root")!).render(<App />);
-""",
-            "src/App.tsx": """
-import React from "react";
-import { Header } from "./components/Header";
-import { Footer } from "./components/Footer";
-
-export function App() {
+export default function App() {
   return (
     <div>
       <Header />
@@ -266,17 +235,13 @@ export function App() {
   );
 }
 """,
-            "src/components/Header.tsx": """
-import React from "react";
-
-export function Header() {
+            "components/Header.tsx": """
+export default function Header() {
   return <header>Header</header>;
 }
 """,
-            "src/components/Footer.tsx": """
-import React from "react";
-
-export function Footer() {
+            "components/Footer.tsx": """
+export default function Footer() {
   return <footer>Footer</footer>;
 }
 """,
@@ -292,25 +257,16 @@ export function Footer() {
 
 def test_builds_app_with_nested_directories() -> None:
     payload = {
-        "entryPoint": "src/main.tsx",
         "files": {
-            "src/main.tsx": """
-import React from "react";
-import ReactDOM from "react-dom/client";
-import { App } from "./app/App";
+            "app.tsx": """
+import { useCounter } from "./hooks/useCounter";
 
-ReactDOM.createRoot(document.getElementById("root")!).render(<App />);
-""",
-            "src/app/App.tsx": """
-import React from "react";
-import { useCounter } from "../hooks/useCounter";
-
-export function App() {
+export default function App() {
   const count = useCounter();
   return <div>Count: {count}</div>;
 }
 """,
-            "src/hooks/useCounter.ts": """
+            "hooks/useCounter.ts": """
 import { useState } from "react";
 
 export function useCounter() {
@@ -329,23 +285,13 @@ export function useCounter() {
 
 def test_builds_with_typescript_types() -> None:
     payload = {
-        "entryPoint": "src/main.tsx",
         "files": {
-            "src/main.tsx": """
-import React from "react";
-import ReactDOM from "react-dom/client";
-import { App } from "./App";
-
-ReactDOM.createRoot(document.getElementById("root")!).render(<App name="World" />);
-""",
-            "src/App.tsx": """
-import React from "react";
-
+            "app.tsx": """
 interface AppProps {
-  name: string;
+  name?: string;
 }
 
-export function App({ name }: AppProps): React.ReactElement {
+export default function App({ name = "World" }: AppProps) {
   return <div>Hello, {name}!</div>;
 }
 """,
@@ -357,22 +303,17 @@ export function App({ name }: AppProps): React.ReactElement {
 
 def test_builds_with_type_only_imports() -> None:
     payload = {
-        "entryPoint": "src/main.tsx",
         "files": {
-            "src/main.tsx": """
-import React from "react";
-import ReactDOM from "react-dom/client";
+            "app.tsx": """
 import type { User } from "./types";
 
 const user: User = { id: 1, name: "Test" };
 
-function App() {
+export default function App() {
   return <div>{user.name}</div>;
 }
-
-ReactDOM.createRoot(document.getElementById("root")!).render(<App />);
 """,
-            "src/types.ts": """
+            "types.ts": """
 export interface User {
   id: number;
   name: string;

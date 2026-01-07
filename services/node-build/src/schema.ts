@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 export const BuildRequestSchema = z.object({
-  entryPoint: z.string().min(1),
   files: z
     .record(
       z.string().min(1), // file path

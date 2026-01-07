@@ -8,7 +8,7 @@
 """
 Integration tests for the KV database service.
 
-Run with: pytest test_node_build.py -v
+Run with: pytest test_service.py -v
 Requires the server to be running on localhost:3001
 """
 
@@ -20,31 +20,18 @@ import requests
 BASE_URL = "http://localhost:3001"
 
 
-def create_project() -> str:
-    """Helper to create a new project and return its UUID."""
-    response = requests.post(f"{BASE_URL}/project/new", timeout=10)
-    response.raise_for_status()
-    return response.json()["id"]
-
-
-def test_create_project() -> None:
-    """Test creating a new project returns a valid UUID."""
-    response = requests.post(f"{BASE_URL}/project/new", timeout=10)
-
-    assert response.status_code == 200
-    data = response.json()
-    assert "id" in data
-    # Validate it's a valid UUID
-    uuid.UUID(data["id"])
+def new_project_id() -> str:
+    """Generate a new project UUID."""
+    return str(uuid.uuid4())
 
 
 def test_store_and_get_entry() -> None:
     """Test storing and retrieving a key-value entry."""
-    project_id = create_project()
+    project_id = new_project_id()
     key = "test-key"
     content = b"Hello, World!"
 
-    # Store entry
+    # Store entry (auto-creates project)
     store_response = requests.post(
         f"{BASE_URL}/project/{project_id}/{key}",
         data=content,
@@ -65,7 +52,7 @@ def test_store_and_get_entry() -> None:
 
 def test_store_with_mime_type() -> None:
     """Test that Content-Type header is preserved."""
-    project_id = create_project()
+    project_id = new_project_id()
     key = "image.png"
     content = b"\x89PNG\r\n\x1a\n"  # PNG magic bytes
     mime_type = "image/png"
@@ -90,7 +77,7 @@ def test_store_with_mime_type() -> None:
 
 def test_store_default_mime_type() -> None:
     """Test that missing Content-Type defaults to application/octet-stream."""
-    project_id = create_project()
+    project_id = new_project_id()
     key = "binary-data"
     content = b"\x00\x01\x02\x03"
 
@@ -113,7 +100,7 @@ def test_store_default_mime_type() -> None:
 
 def test_list_entries_with_prefix() -> None:
     """Test listing entries by prefix."""
-    project_id = create_project()
+    project_id = new_project_id()
 
     # Store multiple entries with common prefix
     entries = [
@@ -150,7 +137,7 @@ def test_list_entries_with_prefix() -> None:
 
 def test_list_entries_empty_prefix() -> None:
     """Test listing all entries with empty prefix."""
-    project_id = create_project()
+    project_id = new_project_id()
 
     # Store entries
     keys = ["file1.txt", "file2.txt", "nested/file3.txt"]
@@ -175,7 +162,7 @@ def test_list_entries_empty_prefix() -> None:
 
 def test_delete_entry() -> None:
     """Test deleting an entry."""
-    project_id = create_project()
+    project_id = new_project_id()
     key = "to-delete"
 
     # Store entry
@@ -203,7 +190,14 @@ def test_delete_entry() -> None:
 
 def test_get_nonexistent_key() -> None:
     """Test 404 for nonexistent key."""
-    project_id = create_project()
+    project_id = new_project_id()
+
+    # First store something to create the project
+    requests.post(
+        f"{BASE_URL}/project/{project_id}/some-key",
+        data=b"content",
+        timeout=10,
+    )
 
     response = requests.get(
         f"{BASE_URL}/project/{project_id}/get/nonexistent-key",
@@ -217,7 +211,14 @@ def test_get_nonexistent_key() -> None:
 
 def test_delete_nonexistent_key() -> None:
     """Test 404 when deleting nonexistent key."""
-    project_id = create_project()
+    project_id = new_project_id()
+
+    # First store something to create the project
+    requests.post(
+        f"{BASE_URL}/project/{project_id}/some-key",
+        data=b"content",
+        timeout=10,
+    )
 
     response = requests.delete(
         f"{BASE_URL}/project/{project_id}/nonexistent-key",
@@ -227,25 +228,32 @@ def test_delete_nonexistent_key() -> None:
     assert response.status_code == 404
 
 
-def test_store_to_nonexistent_project() -> None:
-    """Test 404 when storing to nonexistent project."""
-    fake_project_id = str(uuid.uuid4())
+def test_auto_create_project() -> None:
+    """Test that storing to a new project UUID auto-creates the project."""
+    project_id = new_project_id()
 
+    # Store to a brand new project - should succeed
     response = requests.post(
-        f"{BASE_URL}/project/{fake_project_id}/some-key",
+        f"{BASE_URL}/project/{project_id}/some-key",
         data=b"content",
         headers={"Content-Type": "text/plain"},
         timeout=10,
     )
 
-    assert response.status_code == 404
-    data = response.json()
-    assert "error" in data
+    assert response.status_code == 201
+
+    # Verify we can retrieve it
+    get_response = requests.get(
+        f"{BASE_URL}/project/{project_id}/get/some-key",
+        timeout=10,
+    )
+    assert get_response.status_code == 200
+    assert get_response.content == b"content"
 
 
 def test_nested_key_paths() -> None:
     """Test keys with slashes like 'folder/subfolder/file.txt'."""
-    project_id = create_project()
+    project_id = new_project_id()
     nested_key = "folder/subfolder/deeply/nested/file.txt"
     content = b"Nested content"
 
@@ -269,7 +277,7 @@ def test_nested_key_paths() -> None:
 
 def test_update_existing_entry() -> None:
     """Test that storing to existing key updates the value."""
-    project_id = create_project()
+    project_id = new_project_id()
     key = "updatable"
 
     # Store initial value
@@ -300,7 +308,7 @@ def test_update_existing_entry() -> None:
 
 def test_special_characters_in_prefix() -> None:
     """Test that special SQL LIKE characters in prefix are escaped."""
-    project_id = create_project()
+    project_id = new_project_id()
 
     # Store entries with special characters
     requests.post(
@@ -337,7 +345,7 @@ def test_special_characters_in_prefix() -> None:
 
 def test_binary_content() -> None:
     """Test storing and retrieving binary content."""
-    project_id = create_project()
+    project_id = new_project_id()
     key = "binary.bin"
     # Include null bytes and other binary data
     content = bytes(range(256))
@@ -360,7 +368,7 @@ def test_binary_content() -> None:
 
 def test_large_content() -> None:
     """Test storing and retrieving larger content."""
-    project_id = create_project()
+    project_id = new_project_id()
     key = "large.bin"
     # 1MB of data
     content = b"x" * (1024 * 1024)
@@ -383,8 +391,8 @@ def test_large_content() -> None:
 
 def test_project_isolation() -> None:
     """Test that entries are isolated between projects."""
-    project1 = create_project()
-    project2 = create_project()
+    project1 = new_project_id()
+    project2 = new_project_id()
     key = "shared-key"
 
     # Store in project1

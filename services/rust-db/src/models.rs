@@ -1,10 +1,4 @@
 use serde::Serialize;
-use uuid::Uuid;
-
-#[derive(Debug, Serialize)]
-pub struct Project {
-    pub id: Uuid,
-}
 
 #[derive(Debug, Serialize)]
 pub struct KeyInfo {
