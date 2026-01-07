@@ -22,8 +22,8 @@ async def create_app(request: CreateAppRequest) -> CreateAppResponse:
     Returns:
         The generated files and a summary of the application.
     """
-    files, _, output = await run_agent(request.prompt)
-    return CreateAppResponse(files=files, summary=output.summary)
+    files, _, summary = await run_agent(request.prompt)
+    return CreateAppResponse(files=files, summary=summary)
 
 
 @app.post('/apps/edit')
@@ -36,5 +36,5 @@ async def edit_app(request: EditAppRequest) -> EditAppResponse:
     Returns:
         The diffs applied, final files, and a summary of the changes.
     """
-    files, diffs, output = await run_agent(request.prompt, request.files)
-    return EditAppResponse(diffs=diffs, files=files, summary=output.summary)
+    files, diffs, summary = await run_agent(request.prompt, request.files)
+    return EditAppResponse(diffs=diffs, files=files, summary=summary)

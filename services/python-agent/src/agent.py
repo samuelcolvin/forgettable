@@ -1,10 +1,18 @@
 """React builder agent using pydantic-ai."""
 
-from pydantic_ai import Agent, RunContext
+import os
 
-from .models import AgentOutput, AppDependencies, Diff, DiffHunk
+import httpx
+from pydantic_ai import Agent, ModelRetry, RunContext, TextOutput
 
-SYSTEM_INSTRUCTIONS = """You are a React application builder. Create client-side React applications following these rules:
+from .models import AppDependencies, Diff, DiffHunk
+
+VALIDATION_ENDPOINT = 'http://localhost:3000'
+
+MODEL = 'gateway/anthropic:claude-sonnet-4-5' if os.environ.get('QUICK') else 'gateway/anthropic:claude-opus-4-5'
+
+SYSTEM_INSTRUCTIONS = """\
+You are a React application builder. Create client-side React applications following these rules:
 
 1. All code must be TypeScript (.tsx or .ts files)
 2. Only React and TailwindCSS are available as dependencies
@@ -21,10 +29,38 @@ When creating files, use appropriate file paths like:
 
 Always provide a summary of what you built and list your design decisions."""
 
-agent: Agent[AppDependencies, AgentOutput] = Agent(
-    'gateway/anthropic:claude-opus-4-5',
+
+async def submit_files(ctx: RunContext[AppDependencies], text: str) -> str:
+    """Submit the generated files to the validation endpoint.
+
+    Args:
+        ctx: The run context containing app dependencies with files.
+        text: The summary text from the model.
+
+    Returns:
+        The response data from the endpoint on success, or the summary text if validation is skipped.
+
+    Raises:
+        ModelRetry: If the endpoint returns a non-200 status, allowing the model to retry.
+    """
+    if os.environ.get('SKIP_VALIDATION'):
+        return text
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            VALIDATION_ENDPOINT,
+            json={'files': ctx.deps.files, 'summary': text},
+            timeout=30.0,
+        )
+        if response.status_code == 200:
+            return response.text
+        raise ModelRetry(response.text)
+
+
+agent: Agent[AppDependencies, str] = Agent(
+    MODEL,
     deps_type=AppDependencies,
-    output_type=AgentOutput,
+    output_type=TextOutput(submit_files),
     instructions=SYSTEM_INSTRUCTIONS,
 )
 
@@ -106,7 +142,7 @@ def delete_file(ctx: RunContext[AppDependencies], file_path: str) -> str:
 async def run_agent(
     prompt: str,
     existing_files: dict[str, str] | None = None,
-) -> tuple[dict[str, str], dict[str, Diff], AgentOutput]:
+) -> tuple[dict[str, str], dict[str, Diff], str]:
     """Run the React builder agent.
 
     Args:
@@ -114,10 +150,10 @@ async def run_agent(
         existing_files: Optional dict of existing files when editing an app.
 
     Returns:
-        A tuple of (files, diffs, output) where:
+        A tuple of (files, diffs, summary) where:
         - files: The final state of all files
         - diffs: Any diffs that were applied (for edit operations)
-        - output: The agent's structured output with summary and design decisions
+        - summary: The summary string returned from the validation endpoint
     """
     deps = AppDependencies(files=existing_files.copy() if existing_files else {})
     result = await agent.run(prompt, deps=deps)

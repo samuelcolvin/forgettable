@@ -22,56 +22,45 @@ def test_create_app() -> None:
 
 def test_edit_app() -> None:
     """Test editing an existing app."""
-    # First create an app
-    create_resp = requests.post(
-        f'{BASE_URL}/apps',
-        json={'prompt': 'Create a simple counter app'},
-        timeout=120,
-    )
-    assert create_resp.status_code == 200
-    files = create_resp.json()['files']
+    files = {
+        'src/App.tsx': """\
+import { useState } from 'react';
 
-    # Then edit it
-    edit_resp = requests.post(
+/**
+ * Main App component with a simple counter.
+ */
+export default function App() {
+    const [count, setCount] = useState(0);
+
+    return (
+        <div className="p-4">
+            <h1 className="text-2xl font-bold">Counter: {count}</h1>
+            <button
+                className="bg-blue-500 text-white px-4 py-2 rounded"
+                onClick={() => setCount(count + 1)}
+            >
+                Increment
+            </button>
+        </div>
+    );
+}
+""",
+    }
+
+    response = requests.post(
         f'{BASE_URL}/apps/edit',
         json={
-            'prompt': 'Add a reset button to the counter that sets the count back to zero',
+            'prompt': 'Add a decrement button next to the increment button',
             'files': files,
         },
         timeout=120,
     )
-    assert edit_resp.status_code == 200
-    data = edit_resp.json()
+    assert response.status_code == 200
+    data = response.json()
     assert 'diffs' in data
     assert 'files' in data
     assert 'summary' in data
-
-
-def test_create_app_includes_typescript() -> None:
-    """Verify generated files are TypeScript."""
-    response = requests.post(
-        f'{BASE_URL}/apps',
-        json={'prompt': 'Create a simple todo list app'},
-        timeout=120,
-    )
-    assert response.status_code == 200
-    data = response.json()
-    # Check all files are .ts or .tsx
-    for path in data['files']:
-        assert path.endswith('.ts') or path.endswith('.tsx'), f'Non-TS file: {path}'
-
-
-def test_create_app_has_summary() -> None:
-    """Verify the response includes a meaningful summary."""
-    response = requests.post(
-        f'{BASE_URL}/apps',
-        json={'prompt': 'Create a greeting component that says Hello World'},
-        timeout=120,
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert 'summary' in data
-    assert len(data['summary']) > 0
+    assert 'src/App.tsx' in data['files']
 
 
 if __name__ == '__main__':

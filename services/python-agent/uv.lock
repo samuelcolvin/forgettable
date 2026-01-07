@@ -1878,6 +1878,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "pydantic-ai" },
 ]
 
@@ -1892,6 +1893,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.128.0" },
+    { name = "httpx", specifier = ">=0.28.0" },
     { name = "pydantic-ai", specifier = ">=1.40.0" },
 ]
 

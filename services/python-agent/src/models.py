@@ -46,13 +46,6 @@ class EditAppResponse(BaseModel):
     summary: str
 
 
-class AgentOutput(BaseModel):
-    """Structured output from the agent."""
-
-    summary: str
-    design_decisions: list[str]
-
-
 @dataclass
 class AppDependencies:
     """Mutable state passed to agent tools."""
