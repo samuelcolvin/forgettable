@@ -1,0 +1,36 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - misspell
+    - unconvert
+    - bodyclose
+    - noctx
+    - gosec
+
+  settings:
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+    gosec:
+      excludes:
+        - G104
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - forgettable/go-main
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

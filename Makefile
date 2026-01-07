@@ -1,9 +1,9 @@
 # Aggregate targets
 .PHONY: format
-format: format-py format-rs ## Format all code
+format: format-py format-rs format-go ## Format all code
 
 .PHONY: lint
-lint: lint-py lint-rs lint-ts ## Lint all code
+lint: lint-py lint-rs lint-ts lint-go ## Lint all code
 
 # Python targets
 .PHONY: format-py
@@ -32,6 +32,17 @@ lint-rs: ## Lint Rust code with clippy (requires DATABASE_URL)
 .PHONY: lint-ts
 lint-ts: ## Lint TypeScript code with tsc
 	pnpm --dir services/node-build typecheck
+
+# Go targets
+.PHONY: format-go
+format-go: ## Format Go code with gofmt
+	gofmt -w services/go-main/
+	cd services/go-main && go mod tidy
+
+.PHONY: lint-go
+lint-go: ## Lint Go code with golangci-lint
+	cd services/go-main && go mod tidy -diff
+	cd services/go-main && golangci-lint run
 
 # Database targets
 .PHONY: start-pg

@@ -5,12 +5,17 @@
       "Bash(test:*)",
       "Bash(cat:*)",
       "Bash(uv:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(fastmod:*)",
       "Bash(curl:*)",
       "Bash(jq:*)",
       "Bash(pnpm exec:*)",
       "Bash(pnpm:*)",
       "Bash(make:*)",
       "Bash(cargo:*)",
+      "Bash(go:*)",
       "WebFetch(domain:ai.pydantic.dev)",
       "WebFetch(domain:fastapi.tiangolo.com)"
     ]

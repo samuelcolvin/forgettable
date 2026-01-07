@@ -1,0 +1,357 @@
+package main
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
+	"net/http"
+	"regexp"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+)
+
+// AppError represents an application error with HTTP status code.
+type AppError struct {
+	Code    int    `json:"-"`
+	Message string `json:"error"`
+}
+
+func (e AppError) Error() string {
+	return e.Message
+}
+
+// Common errors.
+var (
+	ErrNotFound       = AppError{Code: http.StatusNotFound, Message: "Not found"}
+	ErrInvalidRequest = AppError{Code: http.StatusBadRequest, Message: "Invalid request"}
+	ErrInvalidUUID    = AppError{Code: http.StatusBadRequest, Message: "Invalid project ID"}
+)
+
+// Handlers contains HTTP handlers and their dependencies.
+type Handlers struct {
+	pythonClient *PythonAgentClient
+	storage      *Storage
+}
+
+// NewHandlers creates a new Handlers instance.
+func NewHandlers(pythonClient *PythonAgentClient, storage *Storage) *Handlers {
+	return &Handlers{
+		pythonClient: pythonClient,
+		storage:      storage,
+	}
+}
+
+// writeError writes an error response as JSON.
+func writeError(w http.ResponseWriter, err error) {
+	var appErr AppError
+	if errors.As(err, &appErr) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(appErr.Code)
+		_ = json.NewEncoder(w).Encode(appErr)
+		return
+	}
+	log.Printf("unexpected error: %v", err)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusInternalServerError)
+	_ = json.NewEncoder(w).Encode(AppError{Message: "Internal server error"})
+}
+
+// writeJSON writes a JSON response.
+func writeJSON(w http.ResponseWriter, status int, data any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(data)
+}
+
+// validateUUID validates that the given string is a valid UUID.
+func validateUUID(id string) error {
+	if _, err := uuid.Parse(id); err != nil {
+		return ErrInvalidUUID
+	}
+	return nil
+}
+
+// HandleRoot redirects to a new project.
+func (h *Handlers) HandleRoot(w http.ResponseWriter, r *http.Request) {
+	newUUID := uuid.New().String()
+	http.Redirect(w, r, "/"+newUUID, http.StatusFound)
+}
+
+// HandleHealth returns a health check response.
+func (h *Handlers) HandleHealth(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("OK"))
+}
+
+// HandleProject serves the main application page.
+func (h *Handlers) HandleProject(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "uuid")
+	if err := validateUUID(projectID); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	// TODO: Replace with actual React app
+	html := fmt.Sprintf(`<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forgettable - %s</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 { color: #333; }
+        code { background: #f0f0f0; padding: 0.2rem 0.4rem; border-radius: 3px; }
+        .endpoints { margin-top: 1rem; }
+        .endpoint { margin: 0.5rem 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>TODO: Main React App</h1>
+        <p>Project ID: <code>%s</code></p>
+        <div class="endpoints">
+            <h3>Available Endpoints:</h3>
+            <div class="endpoint"><code>POST /%s/create</code> - Create a new app</div>
+            <div class="endpoint"><code>POST /%s/edit</code> - Edit the app</div>
+            <div class="endpoint"><code>GET /%s/view</code> - View the generated app</div>
+        </div>
+    </div>
+</body>
+</html>`, projectID, projectID, projectID, projectID, projectID)
+
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(html))
+}
+
+// CreateRequest is the request body for creating an app.
+type CreateRequest struct {
+	Prompt string `json:"prompt"`
+}
+
+// CreateResponse is the response for creating an app.
+type CreateResponse struct {
+	Summary string   `json:"summary"`
+	Files   []string `json:"files"`
+	ViewURL string   `json:"view_url"`
+}
+
+// HandleCreate creates a new app.
+func (h *Handlers) HandleCreate(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "uuid")
+	if err := validateUUID(projectID); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	var req CreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, AppError{Code: http.StatusBadRequest, Message: "Invalid JSON"})
+		return
+	}
+
+	if req.Prompt == "" {
+		writeError(w, AppError{Code: http.StatusBadRequest, Message: "Prompt is required"})
+		return
+	}
+
+	// Call Python Agent
+	result, err := h.pythonClient.CreateApp(r.Context(), req.Prompt)
+	if err != nil {
+		writeError(w, AppError{Code: http.StatusInternalServerError, Message: fmt.Sprintf("Failed to create app: %v", err)})
+		return
+	}
+
+	// Store in Rust DB
+	if err := h.storage.StoreApp(r.Context(), projectID, result.Files, result.CompiledFiles, result.Summary); err != nil {
+		writeError(w, AppError{Code: http.StatusInternalServerError, Message: fmt.Sprintf("Failed to store app: %v", err)})
+		return
+	}
+
+	// Build response
+	fileList := make([]string, 0, len(result.Files))
+	for path := range result.Files {
+		fileList = append(fileList, path)
+	}
+
+	resp := CreateResponse{
+		Summary: result.Summary,
+		Files:   fileList,
+		ViewURL: "/" + projectID + "/view",
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// EditRequest is the request body for editing an app.
+type EditRequest struct {
+	Prompt string `json:"prompt"`
+}
+
+// EditResponse is the response for editing an app.
+type EditResponse struct {
+	Summary string          `json:"summary"`
+	Files   []string        `json:"files"`
+	Diffs   map[string]Diff `json:"diffs"`
+	ViewURL string          `json:"view_url"`
+}
+
+// HandleEdit edits an existing app.
+func (h *Handlers) HandleEdit(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "uuid")
+	if err := validateUUID(projectID); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	var req EditRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, AppError{Code: http.StatusBadRequest, Message: "Invalid JSON"})
+		return
+	}
+
+	if req.Prompt == "" {
+		writeError(w, AppError{Code: http.StatusBadRequest, Message: "Prompt is required"})
+		return
+	}
+
+	// Get existing source files
+	existingFiles, err := h.storage.GetSourceFiles(r.Context(), projectID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			writeError(w, AppError{Code: http.StatusNotFound, Message: "No app exists for this project"})
+			return
+		}
+		writeError(w, AppError{Code: http.StatusInternalServerError, Message: fmt.Sprintf("Failed to get existing files: %v", err)})
+		return
+	}
+
+	if len(existingFiles) == 0 {
+		writeError(w, AppError{Code: http.StatusNotFound, Message: "No app exists for this project"})
+		return
+	}
+
+	// Call Python Agent
+	result, err := h.pythonClient.EditApp(r.Context(), req.Prompt, existingFiles)
+	if err != nil {
+		writeError(w, AppError{Code: http.StatusInternalServerError, Message: fmt.Sprintf("Failed to edit app: %v", err)})
+		return
+	}
+
+	// Update in Rust DB
+	if err := h.storage.UpdateApp(r.Context(), projectID, result.Files, result.CompiledFiles, result.Summary); err != nil {
+		writeError(w, AppError{Code: http.StatusInternalServerError, Message: fmt.Sprintf("Failed to update app: %v", err)})
+		return
+	}
+
+	// Build response
+	fileList := make([]string, 0, len(result.Files))
+	for path := range result.Files {
+		fileList = append(fileList, path)
+	}
+
+	resp := EditResponse{
+		Summary: result.Summary,
+		Files:   fileList,
+		Diffs:   result.Diffs,
+		ViewURL: "/" + projectID + "/view",
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// HandleView serves the generated app's index.html.
+func (h *Handlers) HandleView(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "uuid")
+	if err := validateUUID(projectID); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	content, mimeType, err := h.storage.GetCompiledFile(r.Context(), projectID, "index.html")
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte("No app generated yet"))
+			return
+		}
+		writeError(w, err)
+		return
+	}
+
+	// Rewrite asset paths to go through our service
+	html := string(content)
+	html = rewriteAssetPaths(html, projectID)
+
+	w.Header().Set("Content-Type", mimeType)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(html))
+}
+
+// HandleAsset serves compiled assets.
+func (h *Handlers) HandleAsset(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "uuid")
+	if err := validateUUID(projectID); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	// Get the asset path from the wildcard
+	assetPath := chi.URLParam(r, "*")
+	if assetPath == "" {
+		writeError(w, ErrNotFound)
+		return
+	}
+
+	// Prepend "assets/" to match the storage key structure
+	fullPath := "assets/" + assetPath
+
+	content, mimeType, err := h.storage.GetCompiledFile(r.Context(), projectID, fullPath)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte("Asset not found"))
+			return
+		}
+		writeError(w, err)
+		return
+	}
+
+	// Set caching headers for hashed assets
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Header().Set("Content-Type", mimeType)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(content)
+}
+
+// rewriteAssetPaths rewrites asset paths in HTML to go through our service.
+func rewriteAssetPaths(html, projectID string) string {
+	// Replace /assets/ with /{uuid}/view/assets/
+	re := regexp.MustCompile(`(src|href)=["'](/assets/)`)
+	html = re.ReplaceAllString(html, fmt.Sprintf(`$1="/%s/view/assets/`, projectID))
+
+	// Also handle relative paths (assets/ without leading /)
+	re2 := regexp.MustCompile(`(src|href)=["'](assets/)`)
+	html = re2.ReplaceAllString(html, fmt.Sprintf(`$1="/%s/view/assets/`, projectID))
+
+	// Handle paths that start with ./assets/
+	re3 := regexp.MustCompile(`(src|href)=["'](\.\/assets/)`)
+	html = re3.ReplaceAllString(html, fmt.Sprintf(`$1="/%s/view/assets/`, projectID))
+
+	return html
+}
