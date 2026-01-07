@@ -1,5 +1,5 @@
 [project]
-name = "python-services"
+name = "python-agent"
 version = "0.1.0"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -9,42 +9,5 @@ dependencies = [
     "pydantic-ai>=1.40.0",
 ]
 
-[dependency-groups]
-dev = [
-    "basedpyright>=1.37.0",
-    "pytest>=8.0.0",
-    "requests>=2.32.0",
-    "ruff>=0.14.10",
-]
-
-# https://beta.ruff.rs/docs/configuration/
-[tool.ruff]
-line-length = 120
-include = [
-    "src/**/*.py",
-    "test_*.py",
-]
-
-[tool.ruff.lint]
-extend-select = [
-    "Q",      # https://docs.astral.sh/ruff/rules/#flake8-quotes-q
-    "RUF100", # https://docs.astral.sh/ruff/rules/unused-noqa/
-    "I",      # https://docs.astral.sh/ruff/rules/#isort-i
-    "FA",     # https://docs.astral.sh/ruff/rules/#flake8-future-annotations-fa
-]
-flake8-quotes = { inline-quotes = "single", multiline-quotes = "double" }
-mccabe = { max-complexity = 14 }
-
-[tool.ruff.lint.isort]
-combine-as-imports = true
-
-[tool.ruff.format]
-docstring-code-format = true
-quote-style = "single"
-
-[tool.pyright]
-pythonVersion = "3.14"
-typeCheckingMode = "strict"
-reportUnnecessaryTypeIgnoreComment = true
-include = ["src", "test_*.py"]
-venv = ".venv"
+[project.scripts]
+python-agent = "python_agent.cli:main"

@@ -153,7 +153,7 @@ def main() -> None:
     """CLI entry point."""
     parser = argparse.ArgumentParser(
         description='React builder agent CLI',
-        prog='python -m src.cli',
+        prog='uv run python-agent',
     )
     subparsers = parser.add_subparsers(dest='command', required=True)
 

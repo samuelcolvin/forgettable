@@ -1,24 +1,17 @@
-# /// script
-# requires-python = ">=3.13"
-# dependencies = [
-#     "pytest",
-#     "requests",
-# ]
-# ///
 """Tests for the node-build server."""
 
 import pytest
 import requests
 
-BASE_URL = "http://localhost:3000"
-BUILD_URL = f"{BASE_URL}/build"
-HEALTH_URL = f"{BASE_URL}/health"
+BASE_URL = 'http://localhost:3000'
+BUILD_URL = f'{BASE_URL}/build'
+HEALTH_URL = f'{BASE_URL}/health'
 
 
 @pytest.fixture
 def simple_react_app() -> dict[str, str]:
     return {
-        "app.tsx": """
+        'app.tsx': """
 export default function App() {
   return <div>Hello, World!</div>;
 }
@@ -29,7 +22,7 @@ export default function App() {
 @pytest.fixture
 def react_app_with_tailwind() -> dict[str, str]:
     return {
-        "app.tsx": """
+        'app.tsx': """
 import "./styles.css";
 
 export default function App() {
@@ -40,7 +33,7 @@ export default function App() {
   );
 }
 """,
-        "styles.css": '@import "tailwindcss";',
+        'styles.css': '@import "tailwindcss";',
     }
 
 
@@ -50,110 +43,108 @@ export default function App() {
 def test_health_returns_ok() -> None:
     response = requests.get(HEALTH_URL)
     assert response.status_code == 200
-    assert response.text == "OK"
+    assert response.text == 'OK'
 
 
 # Validation tests
 
 
 def test_rejects_empty_files() -> None:
-    payload = {"files": {}}
+    payload: dict[str, dict[str, str]] = {'files': {}}
     response = requests.post(BUILD_URL, json=payload)
     assert response.status_code == 400
-    assert "at least one file" in response.text.lower()
+    assert 'at least one file' in response.text.lower()
 
 
 def test_rejects_missing_files() -> None:
-    payload = {}
+    payload: dict[str, str] = {}
     response = requests.post(BUILD_URL, json=payload)
     assert response.status_code == 400
 
 
 def test_rejects_invalid_json() -> None:
-    response = requests.post(
-        BUILD_URL, data="not valid json", headers={"Content-Type": "application/json"}
-    )
+    response = requests.post(BUILD_URL, data='not valid json', headers={'Content-Type': 'application/json'})
     assert response.status_code == 400
-    assert "invalid json" in response.text.lower()
+    assert 'invalid json' in response.text.lower()
 
 
 # Build success tests
 
 
 def test_builds_simple_react_app(simple_react_app: dict[str, str]) -> None:
-    payload = {"files": simple_react_app}
+    payload = {'files': simple_react_app}
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
-    output = response.json()
+    output: dict[str, str] = response.json()
     assert isinstance(output, dict)
     assert len(output) > 0
 
 
 def test_output_contains_js_file(simple_react_app: dict[str, str]) -> None:
-    payload = {"files": simple_react_app}
+    payload = {'files': simple_react_app}
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
     output = response.json()
-    js_files = [k for k in output if k.endswith(".js")]
-    assert len(js_files) >= 1, "Expected at least one JS file in output"
+    js_files = [k for k in output if k.endswith('.js')]
+    assert len(js_files) >= 1, 'Expected at least one JS file in output'
 
 
 def test_output_contains_sourcemap(simple_react_app: dict[str, str]) -> None:
-    payload = {"files": simple_react_app}
+    payload = {'files': simple_react_app}
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
     output = response.json()
-    map_files = [k for k in output if k.endswith(".js.map")]
-    assert len(map_files) >= 1, "Expected at least one sourcemap file in output"
+    map_files = [k for k in output if k.endswith('.js.map')]
+    assert len(map_files) >= 1, 'Expected at least one sourcemap file in output'
 
 
 def test_builds_app_with_tailwind(react_app_with_tailwind: dict[str, str]) -> None:
-    payload = {"files": react_app_with_tailwind}
+    payload = {'files': react_app_with_tailwind}
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
     output = response.json()
-    css_files = [k for k in output if k.endswith(".css")]
-    assert len(css_files) >= 1, "Expected at least one CSS file in output"
+    css_files = [k for k in output if k.endswith('.css')]
+    assert len(css_files) >= 1, 'Expected at least one CSS file in output'
 
 
 def test_tailwind_processes_utilities(react_app_with_tailwind: dict[str, str]) -> None:
-    payload = {"files": react_app_with_tailwind}
+    payload = {'files': react_app_with_tailwind}
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
     output = response.json()
-    css_files = [k for k in output if k.endswith(".css")]
+    css_files = [k for k in output if k.endswith('.css')]
     assert len(css_files) >= 1
 
     css_content = output[css_files[0]]
-    assert "bg-blue-500" in css_content or "blue" in css_content.lower()
+    assert 'bg-blue-500' in css_content or 'blue' in css_content.lower()
 
 
 def test_output_files_are_in_assets_directory(simple_react_app: dict[str, str]) -> None:
-    payload = {"files": simple_react_app}
+    payload = {'files': simple_react_app}
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
     output = response.json()
     for key in output:
-        assert key.startswith("assets/"), f"Expected file {key} to be in assets/"
+        assert key.startswith('assets/'), f'Expected file {key} to be in assets/'
 
 
 def test_js_output_contains_react_code(simple_react_app: dict[str, str]) -> None:
-    payload = {"files": simple_react_app}
+    payload = {'files': simple_react_app}
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
     output = response.json()
-    js_files = [k for k in output if k.endswith(".js") and not k.endswith(".map")]
+    js_files = [k for k in output if k.endswith('.js') and not k.endswith('.map')]
     assert len(js_files) >= 1
 
     js_content = output[js_files[0]]
-    assert len(js_content) > 100, "JS bundle seems too small"
+    assert len(js_content) > 100, 'JS bundle seems too small'
 
 
 # Build error tests
@@ -161,8 +152,8 @@ def test_js_output_contains_react_code(simple_react_app: dict[str, str]) -> None
 
 def test_returns_error_for_missing_app() -> None:
     payload = {
-        "files": {
-            "other.tsx": """
+        'files': {
+            'other.tsx': """
 export default function Other() {
   return <div>Other</div>;
 }
@@ -171,13 +162,13 @@ export default function Other() {
     }
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 400
-    assert "app" in response.text.lower() or "resolve" in response.text.lower()
+    assert 'app' in response.text.lower() or 'resolve' in response.text.lower()
 
 
 def test_returns_error_for_missing_import() -> None:
     payload = {
-        "files": {
-            "app.tsx": """
+        'files': {
+            'app.tsx': """
 import { NonExistent } from "./missing";
 
 export default function App() {
@@ -188,13 +179,13 @@ export default function App() {
     }
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 400
-    assert "missing" in response.text.lower() or "resolve" in response.text.lower()
+    assert 'missing' in response.text.lower() or 'resolve' in response.text.lower()
 
 
 def test_returns_error_for_syntax_error() -> None:
     payload = {
-        "files": {
-            "app.tsx": """
+        'files': {
+            'app.tsx': """
 export default function App() {
   return <div>
   // missing closing tags
@@ -207,12 +198,12 @@ export default function App() {
 
 def test_error_response_is_plain_text() -> None:
     payload = {
-        "files": {"app.tsx": 'import "./nonexistent";'},
+        'files': {'app.tsx': 'import "./nonexistent";'},
     }
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 400
-    content_type = response.headers.get("content-type", "")
-    assert "text/plain" in content_type or "application/json" not in content_type
+    content_type = response.headers.get('content-type', '')
+    assert 'text/plain' in content_type or 'application/json' not in content_type
 
 
 # Multiple files tests
@@ -220,8 +211,8 @@ def test_error_response_is_plain_text() -> None:
 
 def test_builds_app_with_multiple_components() -> None:
     payload = {
-        "files": {
-            "app.tsx": """
+        'files': {
+            'app.tsx': """
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 
@@ -235,12 +226,12 @@ export default function App() {
   );
 }
 """,
-            "components/Header.tsx": """
+            'components/Header.tsx': """
 export default function Header() {
   return <header>Header</header>;
 }
 """,
-            "components/Footer.tsx": """
+            'components/Footer.tsx': """
 export default function Footer() {
   return <footer>Footer</footer>;
 }
@@ -251,14 +242,14 @@ export default function Footer() {
     assert response.status_code == 200
 
     output = response.json()
-    js_files = [k for k in output if k.endswith(".js") and not k.endswith(".map")]
+    js_files = [k for k in output if k.endswith('.js') and not k.endswith('.map')]
     assert len(js_files) >= 1
 
 
 def test_builds_app_with_nested_directories() -> None:
     payload = {
-        "files": {
-            "app.tsx": """
+        'files': {
+            'app.tsx': """
 import { useCounter } from "./hooks/useCounter";
 
 export default function App() {
@@ -266,7 +257,7 @@ export default function App() {
   return <div>Count: {count}</div>;
 }
 """,
-            "hooks/useCounter.ts": """
+            'hooks/useCounter.ts': """
 import { useState } from "react";
 
 export function useCounter() {
@@ -285,8 +276,8 @@ export function useCounter() {
 
 def test_builds_with_typescript_types() -> None:
     payload = {
-        "files": {
-            "app.tsx": """
+        'files': {
+            'app.tsx': """
 interface AppProps {
   name?: string;
 }
@@ -303,8 +294,8 @@ export default function App({ name = "World" }: AppProps) {
 
 def test_builds_with_type_only_imports() -> None:
     payload = {
-        "files": {
-            "app.tsx": """
+        'files': {
+            'app.tsx': """
 import type { User } from "./types";
 
 const user: User = { id: 1, name: "Test" };
@@ -313,7 +304,7 @@ export default function App() {
   return <div>{user.name}</div>;
 }
 """,
-            "types.ts": """
+            'types.ts': """
 export interface User {
   id: number;
   name: string;
@@ -323,7 +314,3 @@ export interface User {
     }
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
-
-
-if __name__ == "__main__":
-    pytest.main()
