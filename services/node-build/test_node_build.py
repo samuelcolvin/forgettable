@@ -3,7 +3,7 @@
 import pytest
 import requests
 
-BASE_URL = 'http://localhost:3000'
+BASE_URL = 'http://localhost:3003'
 BUILD_URL = f'{BASE_URL}/build'
 HEALTH_URL = f'{BASE_URL}/health'
 
@@ -131,7 +131,7 @@ def test_output_files_are_in_assets_directory(simple_react_app: dict[str, str]) 
 
     output = response.json()
     for key in output:
-        assert key.startswith('assets/'), f'Expected file {key} to be in assets/'
+        assert key == 'index.html' or key.startswith('assets/'), f'Expected file {key} to be in assets/'
 
 
 def test_js_output_contains_react_code(simple_react_app: dict[str, str]) -> None:

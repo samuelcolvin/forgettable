@@ -1,9 +1,8 @@
 """Tests for the React builder agent API."""
 
-import pytest
 import requests
 
-BASE_URL = 'http://localhost:8000'
+BASE_URL = 'http://localhost:3001'
 
 
 def test_create_app() -> None:
@@ -61,7 +60,3 @@ export default function App() {
     assert 'files' in data
     assert 'summary' in data
     assert 'src/App.tsx' in data['files']
-
-
-if __name__ == '__main__':
-    pytest.main()

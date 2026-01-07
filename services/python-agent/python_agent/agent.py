@@ -9,7 +9,8 @@ from .models import AppDependencies, Diff, DiffHunk
 
 BUILD_ENDPOINT = os.environ.get('BUILD_ENDPOINT', 'http://localhost:3000/build')
 
-MODEL = 'gateway/anthropic:claude-sonnet-4-5' if os.environ.get('QUICK') else 'gateway/anthropic:claude-opus-4-5'
+# 'gateway/anthropic:claude-opus-4-5'
+MODEL = 'gateway/anthropic:claude-sonnet-4-5'
 
 SYSTEM_INSTRUCTIONS = """\
 You are a React application builder. Create client-side React applications following these rules:

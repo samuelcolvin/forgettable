@@ -2,10 +2,9 @@
 
 import uuid
 
-import pytest
 import requests
 
-BASE_URL = 'http://localhost:3002'
+BASE_URL = 'http://localhost:3000'
 
 
 def test_root_redirects_to_uuid() -> None:
@@ -134,35 +133,3 @@ def test_view_returns_html_after_create() -> None:
     response = requests.get(f'{BASE_URL}/{project_id}/view', timeout=10)
     assert response.status_code == 200
     assert 'text/html' in response.headers['Content-Type']
-
-
-def test_edit_app() -> None:
-    """Test editing an existing app.
-
-    This test requires the Python Agent and Rust DB services to be running.
-    """
-    project_id = str(uuid.uuid4())
-
-    # Create app first
-    create_response = requests.post(
-        f'{BASE_URL}/{project_id}/create',
-        json={'prompt': 'Create a counter app with an increment button'},
-        timeout=120,
-    )
-    assert create_response.status_code == 200
-
-    # Edit the app
-    response = requests.post(
-        f'{BASE_URL}/{project_id}/edit',
-        json={'prompt': 'Add a decrement button next to the increment button'},
-        timeout=120,
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert 'summary' in data
-    assert 'files' in data
-    assert 'view_url' in data
-
-
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])

@@ -48,7 +48,7 @@ pytest test_service.py  # Integration tests
 ```bash
 make format         # Format with ruff
 make lint           # Lint with ruff & basedpyright
-make test           # Run tests (auto-starts server, uses QUICK=1 SKIP_VALIDATION=1)
+make test           # Run tests (auto-starts server, uses SKIP_VALIDATION=1)
 ```
 
 ### Node Build (`services/node-build`)
@@ -93,7 +93,7 @@ make format-go      # Format Go code only
 
 ### Python Agent
 - Port 8000, endpoints: `POST /apps` (create), `POST /apps/edit` (edit)
-- Uses Claude Opus 4.5 (or Sonnet 4.5 with QUICK env var)
+- Uses Claude Sonnet 4.5
 - Agent tools operate on in-memory file dict, not filesystem
 - Python 3.14+, strict type checking with basedpyright
 

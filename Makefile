@@ -53,6 +53,10 @@ start-pg: ## Start a PostgreSQL server with docker
 create-schema: ## Create database schema (requires DATABASE_URL)
 	psql $(DATABASE_URL) -f services/rust-db/schema.sql
 
+.PHONY: test
+test: ## Run all integration tests against docker-compose (requires services running)
+	uv run pytest services
+
 # Help target
 .PHONY: help
 help: ## Show this help

@@ -1,9 +1,11 @@
 package main
 
 import (
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"regexp"
@@ -11,6 +13,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
+
+//go:embed index.html
+var indexHTML string
+
+var indexTemplate = template.Must(template.New("index").Parse(indexHTML))
 
 // AppError represents an application error with HTTP status code.
 type AppError struct {
@@ -93,50 +100,9 @@ func (h *Handlers) HandleProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Replace with actual React app
-	html := fmt.Sprintf(`<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Forgettable - %s</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 2rem;
-            background: #f5f5f5;
-        }
-        .container {
-            background: white;
-            padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        h1 { color: #333; }
-        code { background: #f0f0f0; padding: 0.2rem 0.4rem; border-radius: 3px; }
-        .endpoints { margin-top: 1rem; }
-        .endpoint { margin: 0.5rem 0; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>TODO: Main React App</h1>
-        <p>Project ID: <code>%s</code></p>
-        <div class="endpoints">
-            <h3>Available Endpoints:</h3>
-            <div class="endpoint"><code>POST /%s/create</code> - Create a new app</div>
-            <div class="endpoint"><code>POST /%s/edit</code> - Edit the app</div>
-            <div class="endpoint"><code>GET /%s/view</code> - View the generated app</div>
-        </div>
-    </div>
-</body>
-</html>`, projectID, projectID, projectID, projectID, projectID)
-
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(html))
+	_ = indexTemplate.Execute(w, struct{ ProjectID string }{ProjectID: projectID})
 }
 
 // CreateRequest is the request body for creating an app.

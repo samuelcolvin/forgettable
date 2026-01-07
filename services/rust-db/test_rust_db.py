@@ -1,15 +1,10 @@
-"""
-Integration tests for the KV database service.
-
-Run with: pytest test_service.py -v
-Requires the server to be running on localhost:3001
-"""
+"""Integration tests for the KV database service."""
 
 import uuid
 
 import requests
 
-BASE_URL = 'http://localhost:3001'
+BASE_URL = 'http://localhost:3002'
 
 
 def new_project_id() -> str:

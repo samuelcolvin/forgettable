@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forgettable - {{.ProjectID}}</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            height: 100vh;
+            background: #1a1a2e;
+            color: #eee;
+        }
+        .container {
+            display: flex;
+            height: 100%;
+        }
+        .preview {
+            flex: 2;
+            border-right: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+        }
+        .preview-header {
+            padding: 0.75rem 1rem;
+            background: #16213e;
+            border-bottom: 1px solid #333;
+            font-size: 0.875rem;
+            color: #888;
+        }
+        .preview iframe {
+            flex: 1;
+            border: none;
+            background: #fff;
+        }
+        .sidebar {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #16213e;
+        }
+        .sidebar-header {
+            padding: 1rem;
+            border-bottom: 1px solid #333;
+        }
+        .sidebar-header h1 {
+            font-size: 1.25rem;
+            margin-bottom: 0.25rem;
+        }
+        .sidebar-header .project-id {
+            font-size: 0.75rem;
+            color: #666;
+            font-family: monospace;
+        }
+        .prompt-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 1rem;
+        }
+        .prompt-area textarea {
+            flex: 1;
+            resize: none;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 1rem;
+            font-family: inherit;
+            font-size: 0.9rem;
+            background: #0f0f23;
+            color: #eee;
+        }
+        .prompt-area textarea:focus {
+            outline: none;
+            border-color: #4a6cf7;
+        }
+        .prompt-area textarea::placeholder {
+            color: #555;
+        }
+        .submit-btn {
+            margin-top: 1rem;
+            padding: 0.875rem 1.5rem;
+            background: #4a6cf7;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .submit-btn:hover:not(:disabled) {
+            background: #3b5ce4;
+        }
+        .submit-btn:disabled {
+            background: #333;
+            cursor: not-allowed;
+        }
+        .status {
+            margin-top: 0.75rem;
+            padding: 0.75rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            display: none;
+        }
+        .status.error {
+            display: block;
+            background: #3d1f1f;
+            color: #f87171;
+            border: 1px solid #7f1d1d;
+        }
+        .status.success {
+            display: block;
+            background: #1f3d1f;
+            color: #4ade80;
+            border: 1px solid #166534;
+        }
+        .status.loading {
+            display: block;
+            background: #1f2d3d;
+            color: #60a5fa;
+            border: 1px solid #1e40af;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="preview">
+            <div class="preview-header">Preview</div>
+            <iframe id="preview-frame" src="/{{.ProjectID}}/view"></iframe>
+        </div>
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h1>Forgettable</h1>
+                <div class="project-id">{{.ProjectID}}</div>
+            </div>
+            <div class="prompt-area">
+                <textarea id="prompt" placeholder="Describe the React app you want to build..."></textarea>
+                <button class="submit-btn" id="submit-btn">Generate App</button>
+                <div class="status" id="status"></div>
+            </div>
+        </div>
+    </div>
+    <script>
+        const projectId = '{{.ProjectID}}';
+        const promptEl = document.getElementById('prompt');
+        const submitBtn = document.getElementById('submit-btn');
+        const statusEl = document.getElementById('status');
+        const previewFrame = document.getElementById('preview-frame');
+        let hasApp = false;
+
+        function setStatus(message, type) {
+            statusEl.textContent = message;
+            statusEl.className = 'status ' + type;
+        }
+
+        async function submitPrompt() {
+            const prompt = promptEl.value.trim();
+            if (!prompt) return;
+
+            submitBtn.disabled = true;
+            setStatus('Generating...', 'loading');
+
+            const endpoint = hasApp ? '/' + projectId + '/edit' : '/' + projectId + '/create';
+
+            try {
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.error || 'Request failed');
+                }
+
+                hasApp = true;
+                submitBtn.textContent = 'Update App';
+                setStatus(data.summary || 'App generated successfully', 'success');
+                previewFrame.src = '/' + projectId + '/view?' + Date.now();
+                promptEl.value = '';
+            } catch (err) {
+                setStatus(err.message, 'error');
+            } finally {
+                submitBtn.disabled = false;
+            }
+        }
+
+        submitBtn.addEventListener('click', submitPrompt);
+        promptEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                submitPrompt();
+            }
+        });
+
+        // Check if app already exists
+        fetch('/' + projectId + '/view', { method: 'HEAD' })
+            .then(res => {
+                if (res.ok) {
+                    hasApp = true;
+                    submitBtn.textContent = 'Update App';
+                }
+            })
+            .catch(() => {});
+    </script>
+</body>
+</html>
