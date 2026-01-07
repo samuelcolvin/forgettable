@@ -1,0 +1,388 @@
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#     "pytest",
+#     "requests",
+# ]
+# ///
+"""Tests for the node-build server."""
+
+import pytest
+import requests
+
+BASE_URL = "http://localhost:3000"
+BUILD_URL = f"{BASE_URL}/build"
+HEALTH_URL = f"{BASE_URL}/health"
+
+
+@pytest.fixture
+def simple_react_app() -> dict[str, str]:
+    return {
+        "src/main.tsx": """
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { App } from "./App";
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+""",
+        "src/App.tsx": """
+import React from "react";
+
+export function App() {
+  return <div>Hello, World!</div>;
+}
+""",
+    }
+
+
+@pytest.fixture
+def react_app_with_tailwind() -> dict[str, str]:
+    return {
+        "src/main.tsx": """
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { App } from "./App";
+import "./styles.css";
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+""",
+        "src/App.tsx": """
+import React from "react";
+
+export function App() {
+  return (
+    <div className="p-4 bg-blue-500 text-white rounded-lg">
+      Hello, Tailwind!
+    </div>
+  );
+}
+""",
+        "src/styles.css": '@import "tailwindcss";',
+    }
+
+
+# Health endpoint tests
+
+
+def test_health_returns_ok() -> None:
+    response = requests.get(HEALTH_URL)
+    assert response.status_code == 200
+    assert response.text == "OK"
+
+
+# Validation tests
+
+
+def test_rejects_empty_entry_point() -> None:
+    payload = {"entryPoint": "", "files": {"src/main.tsx": "console.log('hello')"}}
+    response = requests.post(BUILD_URL, json=payload)
+    assert response.status_code == 400
+    assert "too_small" in response.text.lower() or ">=1" in response.text
+
+
+def test_rejects_empty_files() -> None:
+    payload = {"entryPoint": "src/main.tsx", "files": {}}
+    response = requests.post(BUILD_URL, json=payload)
+    assert response.status_code == 400
+    assert "at least one file" in response.text.lower()
+
+
+def test_rejects_missing_entry_point() -> None:
+    payload = {"files": {"src/main.tsx": "console.log('hello')"}}
+    response = requests.post(BUILD_URL, json=payload)
+    assert response.status_code == 400
+
+
+def test_rejects_missing_files() -> None:
+    payload = {"entryPoint": "src/main.tsx"}
+    response = requests.post(BUILD_URL, json=payload)
+    assert response.status_code == 400
+
+
+def test_rejects_invalid_json() -> None:
+    response = requests.post(
+        BUILD_URL, data="not valid json", headers={"Content-Type": "application/json"}
+    )
+    assert response.status_code == 400
+    assert "invalid json" in response.text.lower()
+
+
+# Build success tests
+
+
+def test_builds_simple_react_app(simple_react_app: dict[str, str]) -> None:
+    payload = {"entryPoint": "src/main.tsx", "files": simple_react_app}
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 200
+
+    output = response.json()
+    assert isinstance(output, dict)
+    assert len(output) > 0
+
+
+def test_output_contains_js_file(simple_react_app: dict[str, str]) -> None:
+    payload = {"entryPoint": "src/main.tsx", "files": simple_react_app}
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 200
+
+    output = response.json()
+    js_files = [k for k in output if k.endswith(".js")]
+    assert len(js_files) >= 1, "Expected at least one JS file in output"
+
+
+def test_output_contains_sourcemap(simple_react_app: dict[str, str]) -> None:
+    payload = {"entryPoint": "src/main.tsx", "files": simple_react_app}
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 200
+
+    output = response.json()
+    map_files = [k for k in output if k.endswith(".js.map")]
+    assert len(map_files) >= 1, "Expected at least one sourcemap file in output"
+
+
+def test_builds_app_with_tailwind(react_app_with_tailwind: dict[str, str]) -> None:
+    payload = {"entryPoint": "src/main.tsx", "files": react_app_with_tailwind}
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 200
+
+    output = response.json()
+    css_files = [k for k in output if k.endswith(".css")]
+    assert len(css_files) >= 1, "Expected at least one CSS file in output"
+
+
+def test_tailwind_processes_utilities(react_app_with_tailwind: dict[str, str]) -> None:
+    payload = {"entryPoint": "src/main.tsx", "files": react_app_with_tailwind}
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 200
+
+    output = response.json()
+    css_files = [k for k in output if k.endswith(".css")]
+    assert len(css_files) >= 1
+
+    css_content = output[css_files[0]]
+    assert "bg-blue-500" in css_content or "blue" in css_content.lower()
+
+
+def test_output_files_are_in_assets_directory(simple_react_app: dict[str, str]) -> None:
+    payload = {"entryPoint": "src/main.tsx", "files": simple_react_app}
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 200
+
+    output = response.json()
+    for key in output:
+        assert key.startswith("assets/"), f"Expected file {key} to be in assets/"
+
+
+def test_js_output_contains_react_code(simple_react_app: dict[str, str]) -> None:
+    payload = {"entryPoint": "src/main.tsx", "files": simple_react_app}
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 200
+
+    output = response.json()
+    js_files = [k for k in output if k.endswith(".js") and not k.endswith(".map")]
+    assert len(js_files) >= 1
+
+    js_content = output[js_files[0]]
+    assert len(js_content) > 100, "JS bundle seems too small"
+
+
+# Build error tests
+
+
+def test_returns_error_for_missing_import() -> None:
+    payload = {
+        "entryPoint": "src/main.tsx",
+        "files": {
+            "src/main.tsx": """
+import { NonExistent } from "./missing";
+console.log(NonExistent);
+"""
+        },
+    }
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 400
+    assert "missing" in response.text.lower() or "resolve" in response.text.lower()
+
+
+def test_returns_error_for_syntax_error() -> None:
+    payload = {
+        "entryPoint": "src/main.tsx",
+        "files": {
+            "src/main.tsx": """
+const x = {
+  // missing closing brace
+"""
+        },
+    }
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 400
+
+
+def test_error_response_is_plain_text() -> None:
+    payload = {
+        "entryPoint": "src/main.tsx",
+        "files": {"src/main.tsx": 'import "./nonexistent";'},
+    }
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 400
+    content_type = response.headers.get("content-type", "")
+    assert "text/plain" in content_type or "application/json" not in content_type
+
+
+# Multiple files tests
+
+
+def test_builds_app_with_multiple_components() -> None:
+    payload = {
+        "entryPoint": "src/main.tsx",
+        "files": {
+            "src/main.tsx": """
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { App } from "./App";
+
+ReactDOM.createRoot(document.getElementById("root")!).render(<App />);
+""",
+            "src/App.tsx": """
+import React from "react";
+import { Header } from "./components/Header";
+import { Footer } from "./components/Footer";
+
+export function App() {
+  return (
+    <div>
+      <Header />
+      <main>Content</main>
+      <Footer />
+    </div>
+  );
+}
+""",
+            "src/components/Header.tsx": """
+import React from "react";
+
+export function Header() {
+  return <header>Header</header>;
+}
+""",
+            "src/components/Footer.tsx": """
+import React from "react";
+
+export function Footer() {
+  return <footer>Footer</footer>;
+}
+""",
+        },
+    }
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 200
+
+    output = response.json()
+    js_files = [k for k in output if k.endswith(".js") and not k.endswith(".map")]
+    assert len(js_files) >= 1
+
+
+def test_builds_app_with_nested_directories() -> None:
+    payload = {
+        "entryPoint": "src/main.tsx",
+        "files": {
+            "src/main.tsx": """
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { App } from "./app/App";
+
+ReactDOM.createRoot(document.getElementById("root")!).render(<App />);
+""",
+            "src/app/App.tsx": """
+import React from "react";
+import { useCounter } from "../hooks/useCounter";
+
+export function App() {
+  const count = useCounter();
+  return <div>Count: {count}</div>;
+}
+""",
+            "src/hooks/useCounter.ts": """
+import { useState } from "react";
+
+export function useCounter() {
+  const [count] = useState(0);
+  return count;
+}
+""",
+        },
+    }
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 200
+
+
+# TypeScript tests
+
+
+def test_builds_with_typescript_types() -> None:
+    payload = {
+        "entryPoint": "src/main.tsx",
+        "files": {
+            "src/main.tsx": """
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { App } from "./App";
+
+ReactDOM.createRoot(document.getElementById("root")!).render(<App name="World" />);
+""",
+            "src/App.tsx": """
+import React from "react";
+
+interface AppProps {
+  name: string;
+}
+
+export function App({ name }: AppProps): React.ReactElement {
+  return <div>Hello, {name}!</div>;
+}
+""",
+        },
+    }
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 200
+
+
+def test_builds_with_type_only_imports() -> None:
+    payload = {
+        "entryPoint": "src/main.tsx",
+        "files": {
+            "src/main.tsx": """
+import React from "react";
+import ReactDOM from "react-dom/client";
+import type { User } from "./types";
+
+const user: User = { id: 1, name: "Test" };
+
+function App() {
+  return <div>{user.name}</div>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")!).render(<App />);
+""",
+            "src/types.ts": """
+export interface User {
+  id: number;
+  name: string;
+}
+""",
+        },
+    }
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 200
+
+
+if __name__ == "__main__":
+    pytest.main()

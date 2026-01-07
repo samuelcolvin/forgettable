@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(test:*)",
+      "Bash(cat:*)",
+      "Bash(uv:*)",
+      "Bash(curl:*)",
+      "Bash(jq:*)",
+      "Bash(pnpm exec:*)",
+      "Bash(pnpm dev)",
+      "Bash(make:*)",
+      "Bash(DATABASE_URL=postgresql://postgres@localhost:5432 cargo r:*)",
+      "Bash(DATABASE_URL=postgresql://postgres@localhost:5432 make:*)"
+    ]
+  }
+}

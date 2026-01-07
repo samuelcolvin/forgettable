@@ -1,0 +1,149 @@
+use axum::{
+    body::Bytes,
+    extract::{Path, State},
+    http::{header, HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
+    Json,
+};
+use sqlx::PgPool;
+use uuid::Uuid;
+
+use crate::error::{AppError, Result};
+use crate::models::{Entry, KeyInfo};
+
+pub async fn get_entry(
+    State(pool): State<PgPool>,
+    Path((project, key)): Path<(Uuid, String)>,
+) -> Result<Response> {
+    let entry: Option<Entry> = sqlx::query_as!(
+        Entry,
+        r#"
+        SELECT mime_type, content
+        FROM entries
+        WHERE project_id = $1 AND key = $2
+        "#,
+        project,
+        key
+    )
+    .fetch_optional(&pool)
+    .await?;
+
+    let entry = entry.ok_or_else(|| AppError::KeyNotFound(key))?;
+
+    Ok((
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, entry.mime_type)],
+        entry.content,
+    )
+        .into_response())
+}
+
+pub async fn list_entries_all(
+    State(pool): State<PgPool>,
+    Path(project): Path<Uuid>,
+) -> Result<Json<Vec<KeyInfo>>> {
+    let entries: Vec<KeyInfo> = sqlx::query_as!(
+        KeyInfo,
+        r#"
+        SELECT key, mime_type
+        FROM entries
+        WHERE project_id = $1
+        ORDER BY key
+        "#,
+        project
+    )
+    .fetch_all(&pool)
+    .await?;
+
+    Ok(Json(entries))
+}
+
+pub async fn list_entries(
+    State(pool): State<PgPool>,
+    Path((project, prefix)): Path<(Uuid, String)>,
+) -> Result<Json<Vec<KeyInfo>>> {
+    // Escape SQL LIKE wildcards
+    let pattern = format!(
+        "{}%",
+        prefix.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+    );
+
+    let entries: Vec<KeyInfo> = sqlx::query_as!(
+        KeyInfo,
+        r#"
+        SELECT key, mime_type
+        FROM entries
+        WHERE project_id = $1 AND key LIKE $2
+        ORDER BY key
+        "#,
+        project,
+        pattern
+    )
+    .fetch_all(&pool)
+    .await?;
+
+    Ok(Json(entries))
+}
+
+pub async fn store_entry(
+    State(pool): State<PgPool>,
+    Path((project, key)): Path<(Uuid, String)>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<StatusCode> {
+    // Extract Content-Type, default to application/octet-stream
+    let mime_type = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream")
+        .to_string();
+
+    // Verify project exists
+    let project_exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM projects WHERE id = $1)")
+            .bind(project)
+            .fetch_one(&pool)
+            .await?;
+
+    if !project_exists {
+        return Err(AppError::ProjectNotFound(project));
+    }
+
+    // Upsert entry
+    sqlx::query(
+        r#"
+        INSERT INTO entries (project_id, key, mime_type, content, updated_at)
+        VALUES ($1, $2, $3, $4, NOW())
+        ON CONFLICT (project_id, key)
+        DO UPDATE SET
+            mime_type = EXCLUDED.mime_type,
+            content = EXCLUDED.content,
+            updated_at = NOW()
+        "#,
+    )
+    .bind(project)
+    .bind(&key)
+    .bind(&mime_type)
+    .bind(body.as_ref())
+    .execute(&pool)
+    .await?;
+
+    Ok(StatusCode::CREATED)
+}
+
+pub async fn delete_entry(
+    State(pool): State<PgPool>,
+    Path((project, key)): Path<(Uuid, String)>,
+) -> Result<StatusCode> {
+    let result = sqlx::query("DELETE FROM entries WHERE project_id = $1 AND key = $2")
+        .bind(project)
+        .bind(&key)
+        .execute(&pool)
+        .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::KeyNotFound(key));
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}

@@ -1,0 +1,35 @@
+[package]
+name = "rust-db"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = "0.8.8"
+sqlx = { version = "0.8.6", features = ["runtime-tokio", "tls-native-tls", "postgres", "uuid"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+# print_stdout = "warn"
+
+# in general we lint against the pedantic group, but we will whitelist
+# certain lints which we don't want to enforce (for now)
+pedantic = { level = "warn", priority = -1 }
+cast_possible_truncation = "allow"  # TODO remove and fix
+cast_possible_wrap = "allow"  # TODO remove and fix
+cast_sign_loss = "allow"  # TODO remove and fix
+cast_precision_loss = "allow"
+doc_markdown = "allow"
+match_same_arms = "allow"
+missing_errors_doc = "allow"
+needless_pass_by_value = "allow"  # TODO disable
+similar_names = "allow"
+too_many_lines = "allow"
+unused_self = "allow"

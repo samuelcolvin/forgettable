@@ -1,0 +1,4 @@
+node_modules/
+dist/
+tmp_build/
+.pnpm-store
