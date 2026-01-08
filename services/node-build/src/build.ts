@@ -2,11 +2,15 @@ import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { build } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import * as logfire from '@pydantic/logfire-node';
-import type { BuildRequest, BuildOutput } from './schema.js';
+import type { BuildRequest, BuildOutput, BuildResponse } from './schema.js';
+
+const execFileAsync = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SERVER_ROOT = path.resolve(__dirname, '..');
@@ -29,7 +33,51 @@ async function copyDir(src: string, dest: string): Promise<void> {
   }
 }
 
-export async function buildProject(request: BuildRequest): Promise<BuildOutput> {
+/**
+ * Run biome check with auto-fix on user-provided files.
+ * Returns null on success, or plain text diagnostics on failure.
+ */
+async function runBiomeCheck(tempDir: string, inputFiles: string[]): Promise<string | null> {
+  const filesToCheck = inputFiles.filter((f) => /\.(tsx?|jsx?)$/.test(f))
+
+  if (filesToCheck.length === 0) return null
+
+  const biomePath = path.join(SERVER_ROOT, 'node_modules/.bin/biome')
+  try {
+    await execFileAsync(
+      biomePath,
+      [
+        'check',
+        '--write',
+        '--config-path',
+        SERVER_ROOT,
+        '--vcs-use-ignore-file=false',
+        ...filesToCheck.map((f) => path.join(tempDir, f)),
+      ],
+      { cwd: tempDir },
+    )
+    return null // Success - no errors
+  } catch (err: unknown) {
+    // Non-zero exit = errors remain after auto-fix
+    // Biome outputs diagnostics to stdout, summary to stderr
+    const execErr = err as { stdout?: string; stderr?: string }
+    const output = [execErr.stdout, execErr.stderr].filter(Boolean).join('\n')
+    return output || 'Biome check failed'
+  }
+}
+
+/**
+ * Read source files back from temp directory (may have been modified by biome).
+ */
+async function readSourceFiles(tempDir: string, inputFiles: string[]): Promise<Record<string, string>> {
+  const source: Record<string, string> = {}
+  for (const file of inputFiles) {
+    source[file] = await fs.readFile(path.join(tempDir, file), 'utf-8')
+  }
+  return source
+}
+
+export async function buildProject(request: BuildRequest): Promise<BuildResponse> {
   const buildId = randomUUID();
   const tempDir = path.join(SERVER_ROOT, `tmp_build_${buildId}`);
   const distDir = path.join(tempDir, 'dist');
@@ -81,6 +129,19 @@ createRoot(document.getElementById('root')!).render(
           await fs.writeFile(path.join(tempDir, 'index.html'), indexHtml, 'utf-8');
         },
       });
+
+      // Run biome check with auto-fix on user-provided files
+      const inputFiles = Object.keys(request.files)
+      const biomeError = await logfire.span('biome check', {
+        callback: async () => runBiomeCheck(tempDir, inputFiles),
+      })
+
+      // Read source files back (may have been modified by biome)
+      const source = await readSourceFiles(tempDir, inputFiles)
+
+      if (biomeError) {
+        throw new Error(biomeError)
+      }
 
       // Run Vite build programmatically
       await logfire.span('vite build', {
@@ -142,7 +203,7 @@ createRoot(document.getElementById('root')!).render(
       });
 
       // Read output files from dist/
-      const output: BuildOutput = await logfire.span('read output files', {
+      const compiled: BuildOutput = await logfire.span('read output files', {
         callback: async () => {
           const result: BuildOutput = {};
 
@@ -175,7 +236,7 @@ createRoot(document.getElementById('root')!).render(
         },
       });
 
-      return output;
+      return { compiled, source };
     },
   });
 }

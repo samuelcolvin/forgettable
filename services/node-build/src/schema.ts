@@ -16,3 +16,10 @@ export type BuildRequest = z.infer<typeof BuildRequestSchema>;
 export const BuildOutputSchema = z.record(z.string(), z.string());
 
 export type BuildOutput = z.infer<typeof BuildOutputSchema>;
+
+export const BuildResponseSchema = z.object({
+  compiled: z.record(z.string(), z.string()),
+  source: z.record(z.string(), z.string()),
+})
+
+export type BuildResponse = z.infer<typeof BuildResponseSchema>

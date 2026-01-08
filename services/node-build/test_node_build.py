@@ -1,9 +1,11 @@
 """Tests for the node-build server."""
 
+import os
+
 import pytest
 import requests
 
-BASE_URL = 'http://localhost:3003'
+BASE_URL = os.getenv('BASE_URL', 'http://localhost:3003')
 BUILD_URL = f'{BASE_URL}/build'
 HEALTH_URL = f'{BASE_URL}/health'
 
@@ -76,9 +78,10 @@ def test_builds_simple_react_app(simple_react_app: dict[str, str]) -> None:
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
-    output: dict[str, str] = response.json()
-    assert isinstance(output, dict)
-    assert len(output) > 0
+    output = response.json()
+    assert 'compiled' in output
+    assert 'source' in output
+    assert len(output['compiled']) > 0
 
 
 def test_output_contains_js_file(simple_react_app: dict[str, str]) -> None:
@@ -86,8 +89,8 @@ def test_output_contains_js_file(simple_react_app: dict[str, str]) -> None:
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
-    output = response.json()
-    js_files = [k for k in output if k.endswith('.js')]
+    compiled = response.json()['compiled']
+    js_files = [k for k in compiled if k.endswith('.js')]
     assert len(js_files) >= 1, 'Expected at least one JS file in output'
 
 
@@ -96,8 +99,8 @@ def test_output_contains_sourcemap(simple_react_app: dict[str, str]) -> None:
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
-    output = response.json()
-    map_files = [k for k in output if k.endswith('.js.map')]
+    compiled = response.json()['compiled']
+    map_files = [k for k in compiled if k.endswith('.js.map')]
     assert len(map_files) >= 1, 'Expected at least one sourcemap file in output'
 
 
@@ -106,8 +109,8 @@ def test_builds_app_with_tailwind(react_app_with_tailwind: dict[str, str]) -> No
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
-    output = response.json()
-    css_files = [k for k in output if k.endswith('.css')]
+    compiled = response.json()['compiled']
+    css_files = [k for k in compiled if k.endswith('.css')]
     assert len(css_files) >= 1, 'Expected at least one CSS file in output'
 
 
@@ -116,11 +119,11 @@ def test_tailwind_processes_utilities(react_app_with_tailwind: dict[str, str]) -
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
-    output = response.json()
-    css_files = [k for k in output if k.endswith('.css')]
+    compiled = response.json()['compiled']
+    css_files = [k for k in compiled if k.endswith('.css')]
     assert len(css_files) >= 1
 
-    css_content = output[css_files[0]]
+    css_content = compiled[css_files[0]]
     assert 'bg-blue-500' in css_content or 'blue' in css_content.lower()
 
 
@@ -129,8 +132,8 @@ def test_output_files_are_in_assets_directory(simple_react_app: dict[str, str]) 
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
-    output = response.json()
-    for key in output:
+    compiled = response.json()['compiled']
+    for key in compiled:
         assert key == 'index.html' or key.startswith('assets/'), f'Expected file {key} to be in assets/'
 
 
@@ -139,11 +142,11 @@ def test_js_output_contains_react_code(simple_react_app: dict[str, str]) -> None
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
-    output = response.json()
-    js_files = [k for k in output if k.endswith('.js') and not k.endswith('.map')]
+    compiled = response.json()['compiled']
+    js_files = [k for k in compiled if k.endswith('.js') and not k.endswith('.map')]
     assert len(js_files) >= 1
 
-    js_content = output[js_files[0]]
+    js_content = compiled[js_files[0]]
     assert len(js_content) > 100, 'JS bundle seems too small'
 
 
@@ -241,8 +244,8 @@ export default function Footer() {
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
-    output = response.json()
-    js_files = [k for k in output if k.endswith('.js') and not k.endswith('.map')]
+    compiled = response.json()['compiled']
+    js_files = [k for k in compiled if k.endswith('.js') and not k.endswith('.map')]
     assert len(js_files) >= 1
 
 
@@ -340,8 +343,8 @@ export default function App() {
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
-    output = response.json()
-    js_files = [k for k in output if k.endswith('.js') and not k.endswith('.map')]
+    compiled = response.json()['compiled']
+    js_files = [k for k in compiled if k.endswith('.js') and not k.endswith('.map')]
     assert len(js_files) >= 1
 
 

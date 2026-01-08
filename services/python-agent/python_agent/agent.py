@@ -36,7 +36,9 @@ When creating files, use appropriate file paths like:
 - types.ts for TypeScript type definitions
 - hooks/useHookName.ts for custom hooks
 
-Always provide a summary of what you built and list your design decisions."""
+Always provide a brief summary of what you built, and anything important to watch out for.
+Keep this summary concise and to the point, avoid use of emojis.
+"""
 
 
 async def submit_files(ctx: RunContext[AppDependencies], text: str) -> str:
@@ -63,7 +65,10 @@ async def submit_files(ctx: RunContext[AppDependencies], text: str) -> str:
             timeout=60.0,
         )
         if response.status_code == 200:
-            ctx.deps.compiled_files = response.json()
+            data = response.json()
+            ctx.deps.compiled_files = data['compiled']
+            # Update source files with biome's auto-fixes
+            ctx.deps.files.update(data['source'])
             return text
         raise ModelRetry(response.text)
 
