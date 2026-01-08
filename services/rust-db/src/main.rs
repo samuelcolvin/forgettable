@@ -1,10 +1,6 @@
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc};
 
-use sqlx::{
-    ConnectOptions,
-    postgres::{PgConnectOptions, PgPoolOptions},
-};
-use tracing::log::LevelFilter;
+use sqlx::postgres::PgPoolOptions;
 
 mod config;
 mod error;
@@ -25,13 +21,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load configuration
     let config = Config::from_env()?;
 
-    // Create database pool with query logging
-    let connect_options: PgConnectOptions = config.database_url.parse()?;
-    let connect_options = connect_options.log_statements(LevelFilter::Info);
+    // Create database pool wrapped with sqlx-tracing for OTEL spans
     let pool = PgPoolOptions::new()
         .max_connections(5)
-        .connect_with(connect_options)
+        .connect(&config.database_url)
         .await?;
+    let pool = Arc::new(sqlx_tracing::Pool::from(pool));
 
     // Build router
     let app = routes::create_router(pool);
