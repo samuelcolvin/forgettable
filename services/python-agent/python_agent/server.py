@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from .agent import run_agent
 from .models import CreateAppRequest, CreateAppResponse, EditAppRequest, EditAppResponse
 
-logfire.configure()
+logfire.configure(service_name='agent', distributed_tracing=True)
 logfire.instrument_pydantic_ai()
 
 app = FastAPI(

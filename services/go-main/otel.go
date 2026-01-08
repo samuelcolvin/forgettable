@@ -64,11 +64,20 @@ func InitTracer(ctx context.Context) (func(context.Context) error, error) {
 	return tp.Shutdown, nil
 }
 
-// HeaderCaptureMiddleware captures HTTP request headers as span attributes.
-func HeaderCaptureMiddleware(next http.Handler) http.Handler {
+// OtelMiddleware captures HTTP request attributes as span attributes.
+func OtelMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		span := oteltrace.SpanFromContext(r.Context())
 		if span.IsRecording() {
+			// Capture full URL
+			scheme := "http"
+			if r.TLS != nil {
+				scheme = "https"
+			}
+			fullURL := scheme + "://" + r.Host + r.RequestURI
+			span.SetAttributes(attribute.String("http.url", fullURL))
+
+			// Capture headers
 			for name, values := range r.Header {
 				attrName := "http.request.header." + strings.ToLower(strings.ReplaceAll(name, "-", "_"))
 				span.SetAttributes(attribute.StringSlice(attrName, values))
