@@ -18,6 +18,7 @@ const FILE_OP_TOOLS = new Set(['create_file', 'edit_file', 'delete_file'])
 interface ChatProps {
   projectId: string
   onFileChange?: () => void
+  initialMessages?: UIMessage[]
 }
 
 function hasCompletedFileOp(message: UIMessage): boolean {
@@ -33,15 +34,38 @@ function hasCompletedFileOp(message: UIMessage): boolean {
   return false
 }
 
-export function Chat({ projectId, onFileChange }: ChatProps) {
+export function Chat({ projectId, onFileChange, initialMessages }: ChatProps) {
   const [input, setInput] = useState('')
   const transport = useMemo(() => new DefaultChatTransport({ api: `/api/${projectId}/chat` }), [projectId])
-  const { messages, sendMessage, status, error } = useChat({ transport })
+  const { messages, sendMessage, status, error } = useChat({ transport, messages: initialMessages })
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const lastRefreshedMsgRef = useRef<string>('')
+  const lastSavedMsgRef = useRef<string>('')
 
-  // Detect completed file operations and trigger refresh
+  // Save conversation when messages change and streaming is complete
   useEffect(() => {
+    if (status !== 'ready' || messages.length === 0) return
+
+    const lastMsg = messages.at(-1)
+    if (!lastMsg || lastSavedMsgRef.current === lastMsg.id) return
+
+    lastSavedMsgRef.current = lastMsg.id
+
+    // Save conversation to backend
+    fetch(`/api/${projectId}/conversation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages }),
+    }).catch((err: unknown) => {
+      console.error('Failed to save conversation:', err)
+    })
+  }, [status, messages, projectId])
+
+  // Detect completed file operations and trigger refresh when streaming completes
+  useEffect(() => {
+    // Only check when status changes to ready (streaming complete)
+    if (status !== 'ready') return
+
     const lastMsg = messages.at(-1)
     if (!lastMsg || lastMsg.role !== 'assistant') return
 
@@ -49,7 +73,7 @@ export function Chat({ projectId, onFileChange }: ChatProps) {
       lastRefreshedMsgRef.current = lastMsg.id
       onFileChange?.()
     }
-  }, [messages, onFileChange])
+  }, [status, messages, onFileChange])
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()

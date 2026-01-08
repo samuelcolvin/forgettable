@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -40,15 +41,17 @@ var (
 
 // Handlers contains HTTP handlers and their dependencies.
 type Handlers struct {
-	pythonClient *PythonAgentClient
-	storage      *Storage
+	pythonClient    *PythonAgentClient
+	nodeBuildClient *NodeBuildClient
+	storage         *Storage
 }
 
 // NewHandlers creates a new Handlers instance.
-func NewHandlers(pythonClient *PythonAgentClient, storage *Storage) *Handlers {
+func NewHandlers(pythonClient *PythonAgentClient, nodeBuildClient *NodeBuildClient, storage *Storage) *Handlers {
 	return &Handlers{
-		pythonClient: pythonClient,
-		storage:      storage,
+		pythonClient:    pythonClient,
+		nodeBuildClient: nodeBuildClient,
+		storage:         storage,
 	}
 }
 
@@ -308,6 +311,7 @@ func (h *Handlers) HandleAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleChat proxies chat requests to the Python Agent using Server-Sent Events.
+// It intercepts the stream to extract file operations and stores them to rust-db.
 func (h *Handlers) HandleChat(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "uuid")
 	if err := validateUUID(projectID); err != nil {
@@ -321,6 +325,9 @@ func (h *Handlers) HandleChat(w http.ResponseWriter, r *http.Request) {
 		writeError(w, AppError{Code: http.StatusInternalServerError, Message: fmt.Sprintf("Failed to get existing files: %v", err)})
 		return
 	}
+	if existingFiles == nil {
+		existingFiles = make(map[string]string)
+	}
 
 	// Read the original request body
 	originalBody, err := io.ReadAll(r.Body)
@@ -331,15 +338,13 @@ func (h *Handlers) HandleChat(w http.ResponseWriter, r *http.Request) {
 
 	// Parse the original body to add files
 	var bodyData map[string]any
-	if err := json.Unmarshal(originalBody, &bodyData); err != nil {
+	if unmarshalErr := json.Unmarshal(originalBody, &bodyData); unmarshalErr != nil {
 		writeError(w, AppError{Code: http.StatusBadRequest, Message: "Invalid JSON in request body"})
 		return
 	}
 
 	// Add existing files to the request
-	if existingFiles != nil {
-		bodyData["files"] = existingFiles
-	}
+	bodyData["files"] = existingFiles
 
 	// Marshal the modified body
 	modifiedBody, err := json.Marshal(bodyData)
@@ -386,39 +391,143 @@ func (h *Handlers) HandleChat(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(resp.StatusCode)
 
-	// Stream the response
-	buf := make([]byte, 1024)
+	// Create SSE parser to intercept file operations
+	parser := NewSSEParser(resp.Body, existingFiles)
+	var hadFileOps bool
+
+	// Stream and parse events
 	for {
-		n, readErr := resp.Body.Read(buf)
-		if n > 0 {
-			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
-				log.Printf("Error writing to client: %v", writeErr)
-				return
-			}
-			flusher.Flush()
-		}
+		event, readErr := parser.ReadEvent()
 		if readErr != nil {
 			if readErr != io.EOF {
 				log.Printf("Error reading from Python Agent: %v", readErr)
 			}
+			break
+		}
+
+		// Write the raw event to the client
+		if _, writeErr := w.Write([]byte(event.RawLine)); writeErr != nil {
+			log.Printf("Error writing to client: %v", writeErr)
 			return
+		}
+		flusher.Flush()
+
+		// Process file operations
+		if event.FileOp != nil {
+			hadFileOps = true
+			switch event.FileOp.Type {
+			case "create", "edit":
+				// Get the updated content from the parser's tracked state
+				content := parser.GetFiles()[event.FileOp.FilePath]
+				if storeErr := h.storage.StoreSourceFile(r.Context(), projectID, event.FileOp.FilePath, content); storeErr != nil {
+					log.Printf("Error storing file %s: %v", event.FileOp.FilePath, storeErr)
+				}
+			case "delete":
+				if delErr := h.storage.DeleteSourceFile(r.Context(), projectID, event.FileOp.FilePath); delErr != nil {
+					log.Printf("Error deleting file %s: %v", event.FileOp.FilePath, delErr)
+				}
+			}
+		}
+
+		// On finish, trigger compilation if there were file operations
+		if event.IsFinished && hadFileOps {
+			go h.compileAndStore(projectID, parser.GetFiles())
 		}
 	}
 }
 
-// rewriteAssetPaths rewrites asset paths in HTML to go through our service.
-func rewriteAssetPaths(html, projectID string) string {
-	// Replace /assets/ with /{uuid}/view/assets/
+// compileAndStore compiles source files and stores the compiled output.
+func (h *Handlers) compileAndStore(projectID string, files map[string]string) {
+	ctx := context.Background()
+
+	// Compile via Node Build
+	compiledFiles, err := h.nodeBuildClient.Build(ctx, files)
+	if err != nil {
+		log.Printf("Error compiling project %s: %v", projectID, err)
+		return
+	}
+
+	// Store compiled files
+	if err := h.storage.StoreCompiledFiles(ctx, projectID, compiledFiles); err != nil {
+		log.Printf("Error storing compiled files for project %s: %v", projectID, err)
+	}
+
+	log.Printf("Successfully compiled and stored project %s", projectID)
+}
+
+// StateResponse is the response for the state endpoint.
+type StateResponse struct {
+	HasApp       bool            `json:"hasApp"`
+	Conversation json.RawMessage `json:"conversation,omitempty"`
+	Metadata     *AppMetadata    `json:"metadata,omitempty"`
+}
+
+// HandleGetState returns the current state of a project.
+func (h *Handlers) HandleGetState(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "uuid")
+	if err := validateUUID(projectID); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	resp := StateResponse{
+		HasApp: h.storage.HasApp(r.Context(), projectID),
+	}
+
+	// Try to get conversation
+	conversation, err := h.storage.GetConversation(r.Context(), projectID)
+	if err == nil {
+		resp.Conversation = conversation
+	}
+
+	// Try to get metadata
+	metadata, err := h.storage.GetMetadata(r.Context(), projectID)
+	if err == nil {
+		resp.Metadata = metadata
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// SaveConversationRequest is the request body for saving conversation.
+type SaveConversationRequest struct {
+	Messages json.RawMessage `json:"messages"`
+}
+
+// HandleSaveConversation saves the conversation state.
+func (h *Handlers) HandleSaveConversation(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "uuid")
+	if err := validateUUID(projectID); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	var req SaveConversationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, AppError{Code: http.StatusBadRequest, Message: "Invalid JSON"})
+		return
+	}
+
+	if err := h.storage.StoreConversation(r.Context(), projectID, req.Messages); err != nil {
+		writeError(w, AppError{Code: http.StatusInternalServerError, Message: fmt.Sprintf("Failed to store conversation: %v", err)})
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// rewriteAssetPaths rewrites asset paths in HTML to use relative paths.
+// This ensures assets load correctly whether accessed directly or via proxy.
+// When accessed via /api/{uuid}/view, relative paths like ./assets/ resolve
+// to /api/{uuid}/view/assets/ which correctly goes through the proxy.
+func rewriteAssetPaths(html, _ string) string {
+	// Replace /assets/ with ./assets/ (relative path)
 	re := regexp.MustCompile(`(src|href)=["'](/assets/)`)
-	html = re.ReplaceAllString(html, fmt.Sprintf(`$1="/%s/view/assets/`, projectID))
+	html = re.ReplaceAllString(html, `$1="./assets/`)
 
-	// Also handle relative paths (assets/ without leading /)
+	// Also handle assets/ without leading / (already relative, just ensure ./ prefix)
 	re2 := regexp.MustCompile(`(src|href)=["'](assets/)`)
-	html = re2.ReplaceAllString(html, fmt.Sprintf(`$1="/%s/view/assets/`, projectID))
-
-	// Handle paths that start with ./assets/
-	re3 := regexp.MustCompile(`(src|href)=["'](\.\/assets/)`)
-	html = re3.ReplaceAllString(html, fmt.Sprintf(`$1="/%s/view/assets/`, projectID))
+	html = re2.ReplaceAllString(html, `$1="./assets/`)
 
 	return html
 }

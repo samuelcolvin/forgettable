@@ -1,5 +1,7 @@
 """FastAPI server for the React builder agent."""
 
+import os
+
 import logfire
 from fastapi import FastAPI
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter
@@ -9,14 +11,16 @@ from starlette.responses import Response
 from .agent import agent, run_agent
 from .models import AppDependencies, CreateAppRequest, CreateAppResponse, EditAppRequest, EditAppResponse
 
-logfire.configure(service_name='agent', distributed_tracing=True)
-logfire.instrument_pydantic_ai()
+if os.environ.get('LOGFIRE_TOKEN'):
+    logfire.configure(service_name='agent', distributed_tracing=True)
+    logfire.instrument_pydantic_ai()
 
 app = FastAPI(
     title='React Builder Agent',
     description='A pydantic-ai powered agent that builds React applications',
 )
-logfire.instrument_fastapi(app)
+if os.environ.get('LOGFIRE_TOKEN'):
+    logfire.instrument_fastapi(app)
 
 
 @app.post('/apps')

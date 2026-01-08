@@ -32,11 +32,12 @@ func main() {
 
 	// Initialize clients
 	pythonClient := NewPythonAgentClient(cfg.PythonAgentURL)
+	nodeBuildClient := NewNodeBuildClient(cfg.NodeBuildURL)
 	dbClient := NewRustDBClient(cfg.RustDBURL)
 	storage := NewStorage(dbClient)
 
 	// Initialize handlers
-	h := NewHandlers(pythonClient, storage)
+	h := NewHandlers(pythonClient, nodeBuildClient, storage)
 
 	// Setup router
 	r := chi.NewRouter()
@@ -57,11 +58,14 @@ func main() {
 	// Project routes
 	r.Route("/{uuid}", func(r chi.Router) {
 		r.Get("/", h.HandleProject)
+		r.Get("/state", h.HandleGetState)
+		r.Post("/conversation", h.HandleSaveConversation)
 		r.Post("/create", h.HandleCreate)
 		r.Post("/edit", h.HandleEdit)
 		r.Post("/chat", h.HandleChat)
 		r.Get("/view", h.HandleView)
 		r.Get("/view/assets/*", h.HandleAsset)
+		r.Get("/assets/*", h.HandleAsset) // Alias for relative URL resolution from /view
 	})
 
 	// Start server

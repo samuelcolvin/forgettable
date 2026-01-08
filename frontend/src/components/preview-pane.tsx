@@ -9,34 +9,37 @@ export interface PreviewPaneRef {
 interface PreviewPaneProps {
   projectId: string
   className?: string
+  initialHasApp?: boolean
 }
 
-export const PreviewPane = forwardRef<PreviewPaneRef, PreviewPaneProps>(({ projectId, className }, ref) => {
-  const [refreshKey, setRefreshKey] = useState(0)
-  const [hasApp, setHasApp] = useState(false)
+export const PreviewPane = forwardRef<PreviewPaneRef, PreviewPaneProps>(
+  ({ projectId, className, initialHasApp = false }, ref) => {
+    const [refreshKey, setRefreshKey] = useState(initialHasApp ? 1 : 0)
+    const [hasApp, setHasApp] = useState(initialHasApp)
 
-  useImperativeHandle(ref, () => ({
-    refresh: () => {
-      setHasApp(true)
-      setRefreshKey((k) => k + 1)
-    },
-  }))
+    useImperativeHandle(ref, () => ({
+      refresh: () => {
+        setHasApp(true)
+        setRefreshKey((k) => k + 1)
+      },
+    }))
 
-  const previewUrl = `/api/${projectId}/view?t=${refreshKey}`
+    const previewUrl = `/api/${projectId}/view?t=${refreshKey}`
 
-  return (
-    <div className={cn('relative h-full w-full bg-muted/30', className)}>
-      {!hasApp && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-background">
-          <div className="text-center text-muted-foreground">
-            <p className="text-sm">No app generated yet</p>
-            <p className="text-xs">Start a conversation to generate your app</p>
+    return (
+      <div className={cn('relative h-full w-full bg-muted/30', className)}>
+        {!hasApp && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background">
+            <div className="text-center text-muted-foreground">
+              <p className="text-sm">No app generated yet</p>
+              <p className="text-xs">Start a conversation to generate your app</p>
+            </div>
           </div>
-        </div>
-      )}
-      <iframe key={refreshKey} src={previewUrl} className="h-full w-full border-0" title="App Preview" />
-    </div>
-  )
-})
+        )}
+        <iframe key={refreshKey} src={previewUrl} className="h-full w-full border-0" title="App Preview" />
+      </div>
+    )
+  },
+)
 
 PreviewPane.displayName = 'PreviewPane'

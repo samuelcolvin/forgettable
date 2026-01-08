@@ -178,6 +178,87 @@ func (s *Storage) HasApp(ctx context.Context, projectID string) bool {
 	return err == nil
 }
 
+// StoreSourceFile stores a single source file.
+func (s *Storage) StoreSourceFile(ctx context.Context, projectID, path, content string) error {
+	key := "source/" + path
+	mimeType := getMimeType(path)
+	return s.client.Store(ctx, projectID, key, mimeType, []byte(content))
+}
+
+// DeleteSourceFile deletes a single source file.
+func (s *Storage) DeleteSourceFile(ctx context.Context, projectID, path string) error {
+	key := "source/" + path
+	return s.client.Delete(ctx, projectID, key)
+}
+
+// StoreCompiledFiles stores all compiled files and updates metadata.
+func (s *Storage) StoreCompiledFiles(ctx context.Context, projectID string, compiledFiles map[string]string) error {
+	// Delete old compiled files first
+	oldCompiled, err := s.client.List(ctx, projectID, "compiled/")
+	if err == nil {
+		for _, entry := range oldCompiled {
+			_ = s.client.Delete(ctx, projectID, entry.Key)
+		}
+	}
+
+	compiledFileList := make([]string, 0, len(compiledFiles))
+
+	// Store new compiled files
+	for path, content := range compiledFiles {
+		key := "compiled/" + path
+		mimeType := getMimeType(path)
+		if storeErr := s.client.Store(ctx, projectID, key, mimeType, []byte(content)); storeErr != nil {
+			return storeErr
+		}
+		compiledFileList = append(compiledFileList, path)
+	}
+
+	// Update metadata with compiled file list
+	existingMeta, err := s.GetMetadata(ctx, projectID)
+	if err != nil {
+		// Create new metadata if none exists
+		now := time.Now().UTC()
+		existingMeta = &AppMetadata{
+			CreatedAt:   now,
+			UpdatedAt:   now,
+			SourceFiles: []string{},
+		}
+	}
+
+	// Get current source files
+	sourceEntries, err := s.client.List(ctx, projectID, "source/")
+	if err == nil {
+		sourceFiles := make([]string, 0, len(sourceEntries))
+		for _, entry := range sourceEntries {
+			sourceFiles = append(sourceFiles, strings.TrimPrefix(entry.Key, "source/"))
+		}
+		existingMeta.SourceFiles = sourceFiles
+	}
+
+	existingMeta.UpdatedAt = time.Now().UTC()
+	existingMeta.CompiledFiles = compiledFileList
+
+	metaJSON, err := json.Marshal(existingMeta)
+	if err != nil {
+		return err
+	}
+	return s.client.Store(ctx, projectID, "_meta/app.json", "application/json", metaJSON)
+}
+
+// GetConversation retrieves the stored conversation for a project.
+func (s *Storage) GetConversation(ctx context.Context, projectID string) (json.RawMessage, error) {
+	content, _, err := s.client.Get(ctx, projectID, "_meta/conversation.json")
+	if err != nil {
+		return nil, err
+	}
+	return content, nil
+}
+
+// StoreConversation saves the conversation for a project.
+func (s *Storage) StoreConversation(ctx context.Context, projectID string, conversation json.RawMessage) error {
+	return s.client.Store(ctx, projectID, "_meta/conversation.json", "application/json", conversation)
+}
+
 // getMimeType returns the MIME type for a file path.
 func getMimeType(path string) string {
 	ext := strings.ToLower(filepath.Ext(path))

@@ -19,10 +19,12 @@ services:
     depends_on:
       - python-agent
       - rust-db
+      - node-build
     environment:
       PORT: "3000"
       PYTHON_AGENT_URL: http://python-agent:3000
       RUST_DB_URL: http://rust-db:3000
+      NODE_BUILD_URL: http://node-build:3000
       LOGFIRE_TOKEN: ${LOGFIRE_TOKEN}
 
   python-agent:
