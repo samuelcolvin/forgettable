@@ -12,10 +12,23 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/riandyrn/otelchi"
 )
 
 func main() {
 	cfg := LoadConfig()
+
+	// Initialize OpenTelemetry
+	ctx := context.Background()
+	shutdown, err := InitTracer(ctx)
+	if err != nil {
+		log.Fatalf("Failed to initialize tracer: %v", err)
+	}
+	defer func() {
+		if err := shutdown(ctx); err != nil {
+			log.Printf("Error shutting down tracer: %v", err)
+		}
+	}()
 
 	// Initialize clients
 	pythonClient := NewPythonAgentClient(cfg.PythonAgentURL)
@@ -29,6 +42,7 @@ func main() {
 	r := chi.NewRouter()
 
 	// Middleware
+	r.Use(otelchi.Middleware("go-main", otelchi.WithChiRoutes(r)))
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(120 * time.Second))

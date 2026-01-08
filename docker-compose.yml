@@ -23,6 +23,7 @@ services:
       PORT: "3000"
       PYTHON_AGENT_URL: http://python-agent:3000
       RUST_DB_URL: http://rust-db:3000
+      LOGFIRE_TOKEN: ${LOGFIRE_TOKEN}
 
   python-agent:
     build: ./services/python-agent

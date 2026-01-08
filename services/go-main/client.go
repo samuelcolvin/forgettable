@@ -9,15 +9,17 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 var httpClient = &http.Client{
 	Timeout: 120 * time.Second,
-	Transport: &http.Transport{
+	Transport: otelhttp.NewTransport(&http.Transport{
 		MaxIdleConns:        100,
 		MaxIdleConnsPerHost: 10,
 		IdleConnTimeout:     90 * time.Second,
-	},
+	}),
 }
 
 // PythonAgentClient handles communication with the Python Agent service.
