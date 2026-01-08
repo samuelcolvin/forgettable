@@ -5,10 +5,10 @@ edition = "2024"
 
 [dependencies]
 axum = "0.8.8"
+axum-tracing-opentelemetry = { version = "0.26", features = ["tracing_level_info"] }
 logfire = "0.9"
 sqlx = { version = "0.8.6", features = ["runtime-tokio", "tls-native-tls", "postgres", "uuid"] }
 tokio = { version = "1", features = ["full"] }
-tower-http = { version = "0.6", features = ["trace"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
