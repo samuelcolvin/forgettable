@@ -54,6 +54,7 @@ services:
       - "3003:3000"
     environment:
       PORT: "3000"
+      LOGFIRE_TOKEN: ${LOGFIRE_TOKEN}
 
 volumes:
   postgres_data:
