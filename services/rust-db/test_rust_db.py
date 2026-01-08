@@ -4,7 +4,7 @@ import uuid
 
 import requests
 
-BASE_URL = 'http://localhost:3002'
+BASE_URL = 'http://localhost:3001'
 
 
 def new_project_id() -> str:

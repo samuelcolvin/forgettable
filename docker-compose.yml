@@ -21,12 +21,11 @@ services:
       additional_contexts:
         frontend: service:frontend
     ports:
-      - "3000:3000"
+      - "30000:3000"
     depends_on:
       - frontend
       - python-agent
       - rust-db
-      - node-build
     environment:
       PORT: "3000"
       PYTHON_AGENT_URL: http://python-agent:3000
@@ -37,34 +36,34 @@ services:
   python-agent:
     build: ./services/python-agent
     ports:
-      - "3001:3000"
+      - "30003:3003"
     depends_on:
       - node-build
     environment:
-      BUILD_ENDPOINT: http://node-build:3000/build
+      BUILD_ENDPOINT: http://node-build:3002/build
       PYDANTIC_AI_GATEWAY_API_KEY: ${PYDANTIC_AI_GATEWAY_API_KEY}
       LOGFIRE_TOKEN: ${LOGFIRE_TOKEN}
-      PORT: "3000"
+      PORT: "3003"
 
   rust-db:
     build: ./services/rust-db
     ports:
-      - "3002:3000"
+      - "30001:3001"
     depends_on:
       postgres:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://postgres@postgres:5432/postgres
       LOGFIRE_TOKEN: ${LOGFIRE_TOKEN}
-      PORT: "3000"
+      PORT: "3001"
       RUST_LOG: info
 
   node-build:
     build: ./services/node-build
     ports:
-      - "3003:3000"
+      - "30002:3002"
     environment:
-      PORT: "3000"
+      PORT: "3002"
       LOGFIRE_TOKEN: ${LOGFIRE_TOKEN}
 
 volumes:

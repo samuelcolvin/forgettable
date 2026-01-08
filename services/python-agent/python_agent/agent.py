@@ -8,7 +8,7 @@ from pydantic_ai import Agent, ModelRetry, RunContext, TextOutput
 
 from .models import AppDependencies, Diff, DiffHunk
 
-BUILD_ENDPOINT = os.environ.get('BUILD_ENDPOINT', 'http://localhost:3000/build')
+BUILD_ENDPOINT = os.environ.get('BUILD_ENDPOINT', 'http://localhost:3002/build')
 
 # MODEL = 'gateway/anthropic:claude-opus-4-5'
 # MODEL = 'gateway/anthropic:claude-sonnet-4-5'

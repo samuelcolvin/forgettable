@@ -24,8 +24,8 @@ COPY python_agent ./python_agent
 # Install the project
 RUN uv sync
 
-ENV PORT=3000
+ENV PORT=3003
 
-EXPOSE 3000
+EXPOSE 3003
 
-CMD ["uv", "run", "uvicorn", "python_agent.server:app", "--host", "0.0.0.0", "--port", "3000"]
+CMD ["uv", "run", "uvicorn", "python_agent.server:app", "--host", "0.0.0.0", "--port", "3003"]

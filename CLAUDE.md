@@ -14,16 +14,16 @@ Forgettable is a multi-service system for AI-assisted React application generati
 ## Architecture Flow
 
 ```
-User Browser → Go Main (port 3002)
+User Browser → Go Main (port 3000)
                     ↓
               /{uuid}/create or /{uuid}/edit
                     ↓
-              Python Agent (port 8000)
+              Python Agent (port 3003)
                     ↓
               Pydantic-AI agent (Claude)
               Uses tools: create_file, edit_file, delete_file
                     ↓
-              Validates via Node Build (port 3000)
+              Validates via Node Build (port 3002)
                     ↓
               Returns to Go Main
                     ↓
@@ -38,7 +38,7 @@ The Go Main service is the user-facing entry point. It forwards generation reque
 
 ### Go Main (`services/go-main`)
 ```bash
-go run .            # Run the server (port 3002)
+go run .            # Run the server (port 3000)
 make lint           # Lint with golangci-lint v2
 make format         # Format with gofmt + go mod tidy
 pytest test_service.py  # Integration tests
@@ -81,7 +81,7 @@ make format-go      # Format Go code only
 ## Service Details
 
 ### Go Main
-- Port 3002, main user-facing web application
+- Port 3000, main user-facing web application
 - Endpoints:
   - `GET /` - Redirect to `/{uuid}` (new project)
   - `GET /{uuid}` - Main app page (TODO: React chat UI)
@@ -95,14 +95,14 @@ make format-go      # Format Go code only
 - Environment: `PORT`, `PYTHON_AGENT_URL`, `RUST_DB_URL`, `LOGFIRE_TOKEN`
 
 ### Python Agent
-- Port 8000, endpoints: `POST /apps` (create), `POST /apps/edit` (edit)
+- Port 3003, endpoints: `POST /apps` (create), `POST /apps/edit` (edit)
 - Uses Claude Sonnet 4.5 via pydantic-ai-slim
 - Agent tools operate on in-memory file dict, not filesystem
 - Python 3.14+, strict type checking with basedpyright
 - Observability via logfire
 
 ### Node Build
-- Port 3000, endpoints: `POST /build`, `GET /health`
+- Port 3002, endpoints: `POST /build`, `GET /health`
 - Tech stack: Express 5 (HTTP), Zod (validation), Vite (bundler)
 - Source files: `index.ts` (entry), `server.ts` (routes), `schema.ts` (Zod schemas), `build.ts` (Vite build logic), `instrumentation.ts` (logfire)
 - Build flow: POST files dict → write to temp dir → run Vite build → return compiled assets

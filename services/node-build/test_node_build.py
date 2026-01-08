@@ -5,7 +5,7 @@ import os
 import pytest
 import requests
 
-BASE_URL = os.getenv('BASE_URL', 'http://localhost:3003')
+BASE_URL = os.getenv('BASE_URL', 'http://localhost:3002')
 BUILD_URL = f'{BASE_URL}/build'
 HEALTH_URL = f'{BASE_URL}/health'
 
