@@ -2,7 +2,7 @@
 
 import requests
 
-BASE_URL = 'http://localhost:3003'
+BASE_URL = 'http://localhost:3001'
 
 
 def test_create_app() -> None:

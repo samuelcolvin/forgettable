@@ -18,7 +18,7 @@ User Browser → Go Main (port 3000)
                     ↓
               /{uuid}/create or /{uuid}/edit
                     ↓
-              Python Agent (port 3003)
+              Python Agent (port 3001)
                     ↓
               Pydantic-AI agent (Claude)
               Uses tools: create_file, edit_file, delete_file
@@ -27,7 +27,7 @@ User Browser → Go Main (port 3000)
                     ↓
               Returns to Go Main
                     ↓
-              Stores in Rust DB (port 3001)
+              Stores in Rust DB (port 3003)
                     ↓
               Serves app at /{uuid}/view
 ```
@@ -95,7 +95,7 @@ make format-go      # Format Go code only
 - Environment: `PORT`, `PYTHON_AGENT_URL`, `RUST_DB_URL`, `LOGFIRE_TOKEN`
 
 ### Python Agent
-- Port 3003, endpoints: `POST /apps` (create), `POST /apps/edit` (edit)
+- Port 3001, endpoints: `POST /apps` (create), `POST /apps/edit` (edit)
 - Uses Claude Sonnet 4.5 via pydantic-ai-slim
 - Agent tools operate on in-memory file dict, not filesystem
 - Python 3.14+, strict type checking with basedpyright
@@ -110,7 +110,7 @@ make format-go      # Format Go code only
 - ESM throughout, TypeScript strict mode
 
 ### Rust DB
-- Port 3001, PostgreSQL backend with SQLx compile-time query verification
+- Port 3003, PostgreSQL backend with SQLx compile-time query verification
 - Tech stack: Axum 0.8, SQLx, logfire (OpenTelemetry)
 - Source files: `main.rs` (entry), `config.rs` (env config), `routes.rs` (URL mapping), `handlers/entries.rs` (request handlers), `models.rs` (data structs), `error.rs` (AppError)
 - Endpoints namespaced by project UUID: `/project/{project}/get/{key}`, `/project/{project}/list/`, `POST /project/{project}/{key}`, `DELETE /project/{project}/{key}`
