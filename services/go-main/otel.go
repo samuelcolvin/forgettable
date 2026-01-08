@@ -2,14 +2,18 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"os"
+	"strings"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 // InitTracer initializes the OpenTelemetry tracer provider for Logfire.
@@ -58,4 +62,18 @@ func InitTracer(ctx context.Context) (func(context.Context) error, error) {
 	))
 
 	return tp.Shutdown, nil
+}
+
+// HeaderCaptureMiddleware captures HTTP request headers as span attributes.
+func HeaderCaptureMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		span := oteltrace.SpanFromContext(r.Context())
+		if span.IsRecording() {
+			for name, values := range r.Header {
+				attrName := "http.request.header." + strings.ToLower(strings.ReplaceAll(name, "-", "_"))
+				span.SetAttributes(attribute.StringSlice(attrName, values))
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }

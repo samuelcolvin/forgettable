@@ -43,6 +43,7 @@ func main() {
 
 	// Middleware
 	r.Use(otelchi.Middleware("go-main", otelchi.WithChiRoutes(r)))
+	r.Use(HeaderCaptureMiddleware)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(120 * time.Second))
