@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { build } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import * as logfire from '@pydantic/logfire-node';
 import type { BuildRequest, BuildOutput } from './schema.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -15,19 +16,22 @@ export async function buildProject(request: BuildRequest): Promise<BuildOutput> 
   const tempDir = path.join(SERVER_ROOT, `tmp_build_${buildId}`);
   const distDir = path.join(tempDir, 'dist');
 
-  {
-    // Create temp directory
-    await fs.mkdir(tempDir, { recursive: true });
+  return await logfire.span('buildProject', {
+    attributes: { buildId },
+    callback: async () => {
+      // Create temp directory and write input files
+      await logfire.span('write input files', {
+        callback: async () => {
+          await fs.mkdir(tempDir, { recursive: true });
 
-    // Write all input files
-    for (const [filePath, content] of Object.entries(request.files)) {
-      const fullPath = path.join(tempDir, filePath);
-      await fs.mkdir(path.dirname(fullPath), { recursive: true });
-      await fs.writeFile(fullPath, content, 'utf-8');
-    }
+          for (const [filePath, content] of Object.entries(request.files)) {
+            const fullPath = path.join(tempDir, filePath);
+            await fs.mkdir(path.dirname(fullPath), { recursive: true });
+            await fs.writeFile(fullPath, content, 'utf-8');
+          }
 
-    // Generate main.tsx entry point that imports App from ./app
-    const mainTsx = `import { StrictMode } from 'react';
+          // Generate main.tsx entry point that imports App from ./app
+          const mainTsx = `import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import 'tailwindcss';
 import App from './app';
@@ -38,10 +42,10 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>
 );
 `;
-    await fs.writeFile(path.join(tempDir, 'main.tsx'), mainTsx, 'utf-8');
+          await fs.writeFile(path.join(tempDir, 'main.tsx'), mainTsx, 'utf-8');
 
-    // Generate index.html that references main.tsx
-    const indexHtml = `<!DOCTYPE html>
+          // Generate index.html that references main.tsx
+          const indexHtml = `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -53,63 +57,76 @@ createRoot(document.getElementById('root')!).render(
     <script type="module" src="/main.tsx"></script>
   </body>
 </html>`;
-    await fs.writeFile(path.join(tempDir, 'index.html'), indexHtml, 'utf-8');
-
-    // Run Vite build programmatically
-    await build({
-      root: tempDir,
-      configFile: false,
-      logLevel: 'error',
-      plugins: [react(), tailwindcss()],
-      resolve: {
-        alias: {
-          react: path.join(SERVER_ROOT, 'node_modules/react'),
-          'react-dom': path.join(SERVER_ROOT, 'node_modules/react-dom'),
-          'react/jsx-runtime': path.join(SERVER_ROOT, 'node_modules/react/jsx-runtime'),
-          'react/jsx-dev-runtime': path.join(SERVER_ROOT, 'node_modules/react/jsx-dev-runtime'),
-          // Point to the CSS file directly for the @import "tailwindcss" pattern
-          tailwindcss: path.join(SERVER_ROOT, 'node_modules/tailwindcss/index.css'),
+          await fs.writeFile(path.join(tempDir, 'index.html'), indexHtml, 'utf-8');
         },
-      },
-      build: {
-        outDir: 'dist',
-        sourcemap: true,
-        emptyOutDir: true,
-        rollupOptions: {
-          input: path.join(tempDir, 'index.html'),
+      });
+
+      // Run Vite build programmatically
+      await logfire.span('vite build', {
+        callback: async () => {
+          await build({
+            root: tempDir,
+            configFile: false,
+            logLevel: 'error',
+            plugins: [react(), tailwindcss()],
+            resolve: {
+              alias: {
+                react: path.join(SERVER_ROOT, 'node_modules/react'),
+                'react-dom': path.join(SERVER_ROOT, 'node_modules/react-dom'),
+                'react/jsx-runtime': path.join(SERVER_ROOT, 'node_modules/react/jsx-runtime'),
+                'react/jsx-dev-runtime': path.join(SERVER_ROOT, 'node_modules/react/jsx-dev-runtime'),
+                // Point to the CSS file directly for the @import "tailwindcss" pattern
+                tailwindcss: path.join(SERVER_ROOT, 'node_modules/tailwindcss/index.css'),
+              },
+            },
+            build: {
+              outDir: 'dist',
+              sourcemap: true,
+              emptyOutDir: true,
+              rollupOptions: {
+                input: path.join(tempDir, 'index.html'),
+              },
+            },
+            cacheDir: path.join(SERVER_ROOT, 'node_modules/.vite'),
+          });
         },
-      },
-      cacheDir: path.join(SERVER_ROOT, 'node_modules/.vite'),
-    });
+      });
 
-    // Read output files from dist/
-    const output: BuildOutput = {};
+      // Read output files from dist/
+      const output: BuildOutput = await logfire.span('read output files', {
+        callback: async () => {
+          const result: BuildOutput = {};
 
-    // Read index.html
-    const indexHtmlPath = path.join(distDir, 'index.html');
-    output['index.html'] = await fs.readFile(indexHtmlPath, 'utf-8');
+          // Read index.html
+          const indexHtmlPath = path.join(distDir, 'index.html');
+          result['index.html'] = await fs.readFile(indexHtmlPath, 'utf-8');
 
-    // Read assets from dist/assets/
-    const assetsDir = path.join(distDir, 'assets');
-    try {
-      const files = await fs.readdir(assetsDir);
-      for (const file of files) {
-        const filePath = path.join(assetsDir, file);
-        const stat = await fs.stat(filePath);
-        if (stat.isFile()) {
-          const content = await fs.readFile(filePath, 'utf-8');
-          output[`assets/${file}`] = content;
-        }
-      }
-    } catch (err) {
-      // assets dir might not exist if build failed silently
-      throw new Error('Build produced no output files');
-    }
+          // Read assets from dist/assets/
+          const assetsDir = path.join(distDir, 'assets');
+          try {
+            const files = await fs.readdir(assetsDir);
+            for (const file of files) {
+              const filePath = path.join(assetsDir, file);
+              const stat = await fs.stat(filePath);
+              if (stat.isFile()) {
+                const content = await fs.readFile(filePath, 'utf-8');
+                result[`assets/${file}`] = content;
+              }
+            }
+          } catch (err) {
+            // assets dir might not exist if build failed silently
+            throw new Error('Build produced no output files');
+          }
 
-    if (Object.keys(output).length <= 1) {
-      throw new Error('Build produced no output files');
-    }
+          if (Object.keys(result).length <= 1) {
+            throw new Error('Build produced no output files');
+          }
 
-    return output;
-  }
+          return result;
+        },
+      });
+
+      return output;
+    },
+  });
 }
