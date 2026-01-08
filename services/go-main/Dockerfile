@@ -21,8 +21,6 @@ WORKDIR /app
 COPY --from=builder /app/go-main ./go-main
 COPY --from=frontend /app/dist ./dist
 
-ENV PORT=3000
-
 EXPOSE 3000
 
 CMD ["./go-main"]

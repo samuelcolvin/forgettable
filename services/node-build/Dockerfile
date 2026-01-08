@@ -19,8 +19,6 @@ RUN pnpm build
 # Copy shadcn components for use in builds
 COPY shadcn ./shadcn
 
-ENV PORT=3002
-
 EXPOSE 3002
 
 CMD ["node", "--import", "./dist/instrumentation.js", "dist/index.js"]
