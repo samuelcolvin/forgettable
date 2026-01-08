@@ -314,3 +314,154 @@ export interface User {
     }
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
+
+
+# shadcn/ui component tests
+
+
+def test_builds_app_with_shadcn_button() -> None:
+    payload = {
+        'files': {
+            'app.tsx': """
+import { Button } from "shadcn/components/ui/button";
+
+export default function App() {
+  return (
+    <div className="p-4">
+      <Button>Click me</Button>
+      <Button variant="secondary">Secondary</Button>
+      <Button variant="destructive">Delete</Button>
+    </div>
+  );
+}
+""",
+        },
+    }
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 200
+
+    output = response.json()
+    js_files = [k for k in output if k.endswith('.js') and not k.endswith('.map')]
+    assert len(js_files) >= 1
+
+
+def test_builds_app_with_shadcn_card() -> None:
+    payload = {
+        'files': {
+            'app.tsx': """
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "shadcn/components/ui/card";
+import { Button } from "shadcn/components/ui/button";
+
+export default function App() {
+  return (
+    <Card className="w-96">
+      <CardHeader>
+        <CardTitle>Card Title</CardTitle>
+        <CardDescription>Card description goes here</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <p>Card content</p>
+      </CardContent>
+      <CardFooter>
+        <Button>Action</Button>
+      </CardFooter>
+    </Card>
+  );
+}
+""",
+        },
+    }
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 200
+
+
+def test_builds_app_with_shadcn_input_and_label() -> None:
+    payload = {
+        'files': {
+            'app.tsx': """
+import { Input } from "shadcn/components/ui/input";
+import { Label } from "shadcn/components/ui/label";
+
+export default function App() {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor="email">Email</Label>
+      <Input id="email" type="email" placeholder="Enter your email" />
+    </div>
+  );
+}
+""",
+        },
+    }
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 200
+
+
+def test_builds_app_with_lucide_icons() -> None:
+    payload = {
+        'files': {
+            'app.tsx': """
+import { Plus, Settings, User } from "lucide-react";
+import { Button } from "shadcn/components/ui/button";
+
+export default function App() {
+  return (
+    <div className="flex gap-2">
+      <Button><Plus /> Add</Button>
+      <Button variant="outline"><Settings /></Button>
+      <Button variant="ghost"><User /></Button>
+    </div>
+  );
+}
+""",
+        },
+    }
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 200
+
+
+def test_builds_app_with_multiple_shadcn_components() -> None:
+    payload = {
+        'files': {
+            'app.tsx': """
+import { Button } from "shadcn/components/ui/button";
+import { Card, CardHeader, CardTitle, CardContent } from "shadcn/components/ui/card";
+import { Input } from "shadcn/components/ui/input";
+import { Label } from "shadcn/components/ui/label";
+import { Badge } from "shadcn/components/ui/badge";
+import { Checkbox } from "shadcn/components/ui/checkbox";
+import { Separator } from "shadcn/components/ui/separator";
+
+export default function App() {
+  return (
+    <Card className="w-96">
+      <CardHeader>
+        <CardTitle>
+          Todo App <Badge>New</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Input placeholder="Add a task" />
+          <Button>Add</Button>
+        </div>
+        <Separator />
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Checkbox id="task1" />
+            <Label htmlFor="task1">Complete project</Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Checkbox id="task2" />
+            <Label htmlFor="task2">Review code</Label>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+""",
+        },
+    }
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 200

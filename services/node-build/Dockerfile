@@ -16,6 +16,9 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN pnpm build
 
+# Copy shadcn components for use in builds
+COPY shadcn ./shadcn
+
 ENV PORT=3000
 
 EXPOSE 3000

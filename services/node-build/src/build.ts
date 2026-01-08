@@ -10,6 +10,24 @@ import type { BuildRequest, BuildOutput } from './schema.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SERVER_ROOT = path.resolve(__dirname, '..');
+const SHADCN_DIR = path.join(SERVER_ROOT, 'shadcn');
+
+/**
+ * Recursively copy a directory to a destination.
+ */
+async function copyDir(src: string, dest: string): Promise<void> {
+  await fs.mkdir(dest, { recursive: true });
+  const entries = await fs.readdir(src, { withFileTypes: true });
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      await copyDir(srcPath, destPath);
+    } else {
+      await fs.copyFile(srcPath, destPath);
+    }
+  }
+}
 
 export async function buildProject(request: BuildRequest): Promise<BuildOutput> {
   const buildId = randomUUID();
@@ -24,6 +42,9 @@ export async function buildProject(request: BuildRequest): Promise<BuildOutput> 
         callback: async () => {
           await fs.mkdir(tempDir, { recursive: true });
 
+          // Copy shadcn components and utilities to temp directory
+          await copyDir(SHADCN_DIR, path.join(tempDir, 'shadcn'));
+
           for (const [filePath, content] of Object.entries(request.files)) {
             const fullPath = path.join(tempDir, filePath);
             await fs.mkdir(path.dirname(fullPath), { recursive: true });
@@ -33,7 +54,7 @@ export async function buildProject(request: BuildRequest): Promise<BuildOutput> 
           // Generate main.tsx entry point that imports App from ./app
           const mainTsx = `import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import 'tailwindcss';
+import './shadcn/globals.css';
 import App from './app';
 
 createRoot(document.getElementById('root')!).render(
@@ -64,20 +85,48 @@ createRoot(document.getElementById('root')!).render(
       // Run Vite build programmatically
       await logfire.span('vite build', {
         callback: async () => {
+          const nm = (pkg: string) => path.join(SERVER_ROOT, 'node_modules', pkg);
           await build({
             root: tempDir,
             configFile: false,
             logLevel: 'error',
             plugins: [react(), tailwindcss()],
             resolve: {
-              alias: {
-                react: path.join(SERVER_ROOT, 'node_modules/react'),
-                'react-dom': path.join(SERVER_ROOT, 'node_modules/react-dom'),
-                'react/jsx-runtime': path.join(SERVER_ROOT, 'node_modules/react/jsx-runtime'),
-                'react/jsx-dev-runtime': path.join(SERVER_ROOT, 'node_modules/react/jsx-dev-runtime'),
-                // Point to the CSS file directly for the @import "tailwindcss" pattern
-                tailwindcss: path.join(SERVER_ROOT, 'node_modules/tailwindcss/index.css'),
-              },
+              alias: [
+                // React aliases
+                { find: 'react', replacement: nm('react') },
+                { find: 'react-dom', replacement: nm('react-dom') },
+                { find: 'react/jsx-runtime', replacement: nm('react/jsx-runtime') },
+                { find: 'react/jsx-dev-runtime', replacement: nm('react/jsx-dev-runtime') },
+                // Tailwind CSS
+                { find: 'tailwindcss', replacement: nm('tailwindcss/index.css') },
+                // shadcn path alias - maps 'shadcn/...' to temp dir
+                { find: /^shadcn\/(.*)$/, replacement: `${path.join(tempDir, 'shadcn')}/$1` },
+                // @ alias for user code
+                { find: /^@\/(.*)$/, replacement: `${tempDir}/$1` },
+                // shadcn utility dependencies
+                { find: 'class-variance-authority', replacement: nm('class-variance-authority') },
+                { find: 'clsx', replacement: nm('clsx') },
+                { find: 'tailwind-merge', replacement: nm('tailwind-merge') },
+                { find: 'lucide-react', replacement: nm('lucide-react') },
+                // Radix UI primitives
+                { find: '@radix-ui/react-accordion', replacement: nm('@radix-ui/react-accordion') },
+                { find: '@radix-ui/react-alert-dialog', replacement: nm('@radix-ui/react-alert-dialog') },
+                { find: '@radix-ui/react-avatar', replacement: nm('@radix-ui/react-avatar') },
+                { find: '@radix-ui/react-checkbox', replacement: nm('@radix-ui/react-checkbox') },
+                { find: '@radix-ui/react-dialog', replacement: nm('@radix-ui/react-dialog') },
+                { find: '@radix-ui/react-dropdown-menu', replacement: nm('@radix-ui/react-dropdown-menu') },
+                { find: '@radix-ui/react-label', replacement: nm('@radix-ui/react-label') },
+                { find: '@radix-ui/react-popover', replacement: nm('@radix-ui/react-popover') },
+                { find: '@radix-ui/react-progress', replacement: nm('@radix-ui/react-progress') },
+                { find: '@radix-ui/react-scroll-area', replacement: nm('@radix-ui/react-scroll-area') },
+                { find: '@radix-ui/react-select', replacement: nm('@radix-ui/react-select') },
+                { find: '@radix-ui/react-separator', replacement: nm('@radix-ui/react-separator') },
+                { find: '@radix-ui/react-slot', replacement: nm('@radix-ui/react-slot') },
+                { find: '@radix-ui/react-switch', replacement: nm('@radix-ui/react-switch') },
+                { find: '@radix-ui/react-tabs', replacement: nm('@radix-ui/react-tabs') },
+                { find: '@radix-ui/react-tooltip', replacement: nm('@radix-ui/react-tooltip') },
+              ],
             },
             build: {
               outDir: 'dist',
