@@ -15,7 +15,7 @@ use crate::{
 type Pool = std::sync::Arc<sqlx_tracing::Pool<sqlx::Postgres>>;
 
 pub async fn get_entry(State(pool): State<Pool>, Path((project, key)): Path<(Uuid, String)>) -> Result<Response> {
-    let entry: Option<Entry> = sqlx::query_as!(
+    let opt_entry: Option<Entry> = sqlx::query_as!(
         Entry,
         r#"
         SELECT mime_type, content
@@ -28,9 +28,24 @@ pub async fn get_entry(State(pool): State<Pool>, Path((project, key)): Path<(Uui
     .fetch_optional(&*pool)
     .await?;
 
-    let entry = entry.ok_or_else(|| AppError::KeyNotFound(key))?;
+    if let Some(entry) = opt_entry {
+        logfire::info!(
+            "retrieved value project={project} key={key} mime_type={mime_type} size={size}",
+            project = project.to_string(),
+            key = key,
+            mime_type = &entry.mime_type,
+            size = entry.content.len()
+        );
 
-    Ok((StatusCode::OK, [(header::CONTENT_TYPE, entry.mime_type)], entry.content).into_response())
+        Ok((StatusCode::OK, [(header::CONTENT_TYPE, entry.mime_type)], entry.content).into_response())
+    } else {
+        logfire::info!(
+            "key not found project={project} key={key}",
+            project = project.to_string(),
+            key = &key,
+        );
+        Err(AppError::KeyNotFound(key))
+    }
 }
 
 pub async fn list_entries_all(State(pool): State<Pool>, Path(project): Path<Uuid>) -> Result<Json<Vec<KeyInfo>>> {
@@ -118,10 +133,7 @@ pub async fn store_entry(
     Ok(StatusCode::CREATED)
 }
 
-pub async fn delete_entry(
-    State(pool): State<Pool>,
-    Path((project, key)): Path<(Uuid, String)>,
-) -> Result<StatusCode> {
+pub async fn delete_entry(State(pool): State<Pool>, Path((project, key)): Path<(Uuid, String)>) -> Result<StatusCode> {
     let result = sqlx::query("DELETE FROM entries WHERE project_id = $1 AND key = $2")
         .bind(project)
         .bind(&key)

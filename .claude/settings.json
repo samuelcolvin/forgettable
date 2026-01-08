@@ -20,7 +20,9 @@
       "Bash(ls:*)",
       "WebFetch(domain:ai.pydantic.dev)",
       "WebFetch(domain:fastapi.tiangolo.com)",
-      "WebFetch(domain:logfire.pydantic.dev)"
+      "WebFetch(domain:logfire.pydantic.dev)",
+      "mcp__logfire__schema_reference",
+      "mcp__logfire__arbitrary_query"
     ]
   }
 }

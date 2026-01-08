@@ -17,5 +17,5 @@ pub fn create_router(pool: std::sync::Arc<sqlx_tracing::Pool<sqlx::Postgres>>) -
         .route("/project/{project}/{*key}", delete(entries::delete_entry))
         .with_state(pool)
         .layer(OtelAxumLayer::default())
-        .layer(OtelInResponseLayer::default())
+        .layer(OtelInResponseLayer)
 }

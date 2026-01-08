@@ -1,5 +1,8 @@
 use std::{net::SocketAddr, sync::Arc};
 
+use opentelemetry::global;
+use opentelemetry::propagation::TextMapCompositePropagator;
+use opentelemetry_sdk::propagation::{BaggagePropagator, TraceContextPropagator};
 use sqlx::postgres::PgPoolOptions;
 
 mod config;
@@ -13,10 +16,14 @@ use config::Config;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logfire (sets up tracing subscriber automatically)
-    let logfire = logfire::configure()
-        .with_service_name("rust-db")
-        .finish()?;
+    let logfire = logfire::configure().with_service_name("rust-db").finish()?;
     let _shutdown_guard = logfire.shutdown_guard();
+
+    // Set up trace context propagator to extract context from incoming HTTP headers
+    global::set_text_map_propagator(TextMapCompositePropagator::new(vec![
+        Box::new(TraceContextPropagator::new()),
+        Box::new(BaggagePropagator::new()),
+    ]));
 
     // Load configuration
     let config = Config::from_env()?;
@@ -33,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Start server
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
-    tracing::info!("Listening on {}", addr);
+    logfire::info!("Listening on {addr}", addr = addr.to_string());
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
