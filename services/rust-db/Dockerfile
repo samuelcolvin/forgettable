@@ -30,8 +30,6 @@ WORKDIR /app
 
 COPY --from=builder /app/target/release/rust-db ./rust-db
 
-ENV PORT=3000
-
-EXPOSE 3000
+EXPOSE 3003
 
 CMD ["./rust-db"]

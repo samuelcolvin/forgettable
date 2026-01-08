@@ -14,8 +14,8 @@ type Config struct {
 
 func LoadConfig() Config {
 	return Config{
-		Port:           getEnvInt("PORT", 3002),
-		PythonAgentURL: getEnv("PYTHON_AGENT_URL", "http://localhost:8000"),
+		Port:           getEnvInt("PORT", 3000),
+		PythonAgentURL: getEnv("PYTHON_AGENT_URL", "http://localhost:3003"),
 		RustDBURL:      getEnv("RUST_DB_URL", "http://localhost:3001"),
 		NodeBuildURL:   getEnv("NODE_BUILD_URL", "http://localhost:3000"),
 	}

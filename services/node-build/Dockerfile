@@ -16,8 +16,9 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN pnpm build
 
-ENV PORT=3000
+# Copy shadcn components for use in builds
+COPY shadcn ./shadcn
 
-EXPOSE 3000
+EXPOSE 3002
 
 CMD ["node", "--import", "./dist/instrumentation.js", "dist/index.js"]

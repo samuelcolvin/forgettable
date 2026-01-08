@@ -8,7 +8,7 @@ from pydantic_ai import Agent, ModelRetry, RunContext, TextOutput
 
 from .models import AppDependencies, Diff, DiffHunk
 
-BUILD_ENDPOINT = os.environ.get('BUILD_ENDPOINT', 'http://localhost:3000/build')
+BUILD_ENDPOINT = os.environ.get('BUILD_ENDPOINT', 'http://localhost:3002/build')
 
 # MODEL = 'gateway/anthropic:claude-opus-4-5'
 # MODEL = 'gateway/anthropic:claude-sonnet-4-5'
@@ -18,11 +18,17 @@ SYSTEM_INSTRUCTIONS = """\
 You are a React application builder. Create client-side React applications following these rules:
 
 1. All code must be TypeScript (.tsx or .ts files)
-2. Only React and TailwindCSS are available as dependencies
+2. React, TailwindCSS, and shadcn/ui components are available
 3. Every function and class must have a docstring
 4. Non-trivial logic must have concise explanation comments
 5. Use modern React patterns (hooks, functional components)
 6. Structure: app.tsx as entry point, components in components/
+7. Use shadcn/ui components for professional, accessible UI:
+   - Import from "shadcn/components/ui/[component]"
+   - Available: Button, Card, Input, Label, Badge, Alert, Separator, Progress, Checkbox, Switch, Tabs,
+     Tooltip, Dialog, Select, ScrollArea, AlertDialog, DropdownMenu, Avatar, Accordion, Popover, Table
+   - Use lucide-react for icons: import { Icon } from "lucide-react"
+   - Example: import { Button } from "shadcn/components/ui/button"
 
 When creating files, use appropriate file paths like:
 - app.tsx for the main app component (required, default export)
@@ -30,7 +36,9 @@ When creating files, use appropriate file paths like:
 - types.ts for TypeScript type definitions
 - hooks/useHookName.ts for custom hooks
 
-Always provide a summary of what you built and list your design decisions."""
+Always provide a brief summary of what you built, and anything important to watch out for.
+Keep this summary concise and to the point, avoid use of emojis.
+"""
 
 
 async def submit_files(ctx: RunContext[AppDependencies], text: str) -> str:
@@ -57,7 +65,10 @@ async def submit_files(ctx: RunContext[AppDependencies], text: str) -> str:
             timeout=60.0,
         )
         if response.status_code == 200:
-            ctx.deps.compiled_files = response.json()
+            data = response.json()
+            ctx.deps.compiled_files = data['compiled']
+            # Update source files with biome's auto-fixes
+            ctx.deps.files.update(data['source'])
             return text
         raise ModelRetry(response.text)
 

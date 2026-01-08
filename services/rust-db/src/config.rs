@@ -20,7 +20,7 @@ impl Config {
         let database_url = env::var("DATABASE_URL").map_err(|_| ConfigError::MissingDatabaseUrl)?;
 
         let port = env::var("PORT")
-            .unwrap_or_else(|_| "3001".to_string())
+            .unwrap_or_else(|_| "3003".to_string())
             .parse()
             .map_err(|_| ConfigError::InvalidPort)?;
 

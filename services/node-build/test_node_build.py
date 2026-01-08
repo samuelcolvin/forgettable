@@ -1,9 +1,11 @@
 """Tests for the node-build server."""
 
+import os
+
 import pytest
 import requests
 
-BASE_URL = 'http://localhost:3003'
+BASE_URL = os.getenv('BASE_URL', 'http://localhost:3002')
 BUILD_URL = f'{BASE_URL}/build'
 HEALTH_URL = f'{BASE_URL}/health'
 
@@ -76,9 +78,10 @@ def test_builds_simple_react_app(simple_react_app: dict[str, str]) -> None:
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
-    output: dict[str, str] = response.json()
-    assert isinstance(output, dict)
-    assert len(output) > 0
+    output = response.json()
+    assert 'compiled' in output
+    assert 'source' in output
+    assert len(output['compiled']) > 0
 
 
 def test_output_contains_js_file(simple_react_app: dict[str, str]) -> None:
@@ -86,8 +89,8 @@ def test_output_contains_js_file(simple_react_app: dict[str, str]) -> None:
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
-    output = response.json()
-    js_files = [k for k in output if k.endswith('.js')]
+    compiled = response.json()['compiled']
+    js_files = [k for k in compiled if k.endswith('.js')]
     assert len(js_files) >= 1, 'Expected at least one JS file in output'
 
 
@@ -96,8 +99,8 @@ def test_output_contains_sourcemap(simple_react_app: dict[str, str]) -> None:
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
-    output = response.json()
-    map_files = [k for k in output if k.endswith('.js.map')]
+    compiled = response.json()['compiled']
+    map_files = [k for k in compiled if k.endswith('.js.map')]
     assert len(map_files) >= 1, 'Expected at least one sourcemap file in output'
 
 
@@ -106,8 +109,8 @@ def test_builds_app_with_tailwind(react_app_with_tailwind: dict[str, str]) -> No
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
-    output = response.json()
-    css_files = [k for k in output if k.endswith('.css')]
+    compiled = response.json()['compiled']
+    css_files = [k for k in compiled if k.endswith('.css')]
     assert len(css_files) >= 1, 'Expected at least one CSS file in output'
 
 
@@ -116,11 +119,11 @@ def test_tailwind_processes_utilities(react_app_with_tailwind: dict[str, str]) -
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
-    output = response.json()
-    css_files = [k for k in output if k.endswith('.css')]
+    compiled = response.json()['compiled']
+    css_files = [k for k in compiled if k.endswith('.css')]
     assert len(css_files) >= 1
 
-    css_content = output[css_files[0]]
+    css_content = compiled[css_files[0]]
     assert 'bg-blue-500' in css_content or 'blue' in css_content.lower()
 
 
@@ -129,8 +132,8 @@ def test_output_files_are_in_assets_directory(simple_react_app: dict[str, str]) 
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
-    output = response.json()
-    for key in output:
+    compiled = response.json()['compiled']
+    for key in compiled:
         assert key == 'index.html' or key.startswith('assets/'), f'Expected file {key} to be in assets/'
 
 
@@ -139,11 +142,11 @@ def test_js_output_contains_react_code(simple_react_app: dict[str, str]) -> None
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
-    output = response.json()
-    js_files = [k for k in output if k.endswith('.js') and not k.endswith('.map')]
+    compiled = response.json()['compiled']
+    js_files = [k for k in compiled if k.endswith('.js') and not k.endswith('.map')]
     assert len(js_files) >= 1
 
-    js_content = output[js_files[0]]
+    js_content = compiled[js_files[0]]
     assert len(js_content) > 100, 'JS bundle seems too small'
 
 
@@ -241,8 +244,8 @@ export default function Footer() {
     response = requests.post(BUILD_URL, json=payload, timeout=60)
     assert response.status_code == 200
 
-    output = response.json()
-    js_files = [k for k in output if k.endswith('.js') and not k.endswith('.map')]
+    compiled = response.json()['compiled']
+    js_files = [k for k in compiled if k.endswith('.js') and not k.endswith('.map')]
     assert len(js_files) >= 1
 
 
@@ -308,6 +311,157 @@ export default function App() {
 export interface User {
   id: number;
   name: string;
+}
+""",
+        },
+    }
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 200
+
+
+# shadcn/ui component tests
+
+
+def test_builds_app_with_shadcn_button() -> None:
+    payload = {
+        'files': {
+            'app.tsx': """
+import { Button } from "shadcn/components/ui/button";
+
+export default function App() {
+  return (
+    <div className="p-4">
+      <Button>Click me</Button>
+      <Button variant="secondary">Secondary</Button>
+      <Button variant="destructive">Delete</Button>
+    </div>
+  );
+}
+""",
+        },
+    }
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 200
+
+    compiled = response.json()['compiled']
+    js_files = [k for k in compiled if k.endswith('.js') and not k.endswith('.map')]
+    assert len(js_files) >= 1
+
+
+def test_builds_app_with_shadcn_card() -> None:
+    payload = {
+        'files': {
+            'app.tsx': """
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "shadcn/components/ui/card";
+import { Button } from "shadcn/components/ui/button";
+
+export default function App() {
+  return (
+    <Card className="w-96">
+      <CardHeader>
+        <CardTitle>Card Title</CardTitle>
+        <CardDescription>Card description goes here</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <p>Card content</p>
+      </CardContent>
+      <CardFooter>
+        <Button>Action</Button>
+      </CardFooter>
+    </Card>
+  );
+}
+""",
+        },
+    }
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 200
+
+
+def test_builds_app_with_shadcn_input_and_label() -> None:
+    payload = {
+        'files': {
+            'app.tsx': """
+import { Input } from "shadcn/components/ui/input";
+import { Label } from "shadcn/components/ui/label";
+
+export default function App() {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor="email">Email</Label>
+      <Input id="email" type="email" placeholder="Enter your email" />
+    </div>
+  );
+}
+""",
+        },
+    }
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 200
+
+
+def test_builds_app_with_lucide_icons() -> None:
+    payload = {
+        'files': {
+            'app.tsx': """
+import { Plus, Settings, User } from "lucide-react";
+import { Button } from "shadcn/components/ui/button";
+
+export default function App() {
+  return (
+    <div className="flex gap-2">
+      <Button><Plus /> Add</Button>
+      <Button variant="outline"><Settings /></Button>
+      <Button variant="ghost"><User /></Button>
+    </div>
+  );
+}
+""",
+        },
+    }
+    response = requests.post(BUILD_URL, json=payload, timeout=60)
+    assert response.status_code == 200
+
+
+def test_builds_app_with_multiple_shadcn_components() -> None:
+    payload = {
+        'files': {
+            'app.tsx': """
+import { Button } from "shadcn/components/ui/button";
+import { Card, CardHeader, CardTitle, CardContent } from "shadcn/components/ui/card";
+import { Input } from "shadcn/components/ui/input";
+import { Label } from "shadcn/components/ui/label";
+import { Badge } from "shadcn/components/ui/badge";
+import { Checkbox } from "shadcn/components/ui/checkbox";
+import { Separator } from "shadcn/components/ui/separator";
+
+export default function App() {
+  return (
+    <Card className="w-96">
+      <CardHeader>
+        <CardTitle>
+          Todo App <Badge>New</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Input placeholder="Add a task" />
+          <Button>Add</Button>
+        </div>
+        <Separator />
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Checkbox id="task1" />
+            <Label htmlFor="task1">Complete project</Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Checkbox id="task2" />
+            <Label htmlFor="task2">Review code</Label>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 """,
         },
