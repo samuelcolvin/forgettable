@@ -5,7 +5,6 @@ use axum::{
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
 };
-use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
@@ -13,7 +12,9 @@ use crate::{
     models::{Entry, KeyInfo},
 };
 
-pub async fn get_entry(State(pool): State<PgPool>, Path((project, key)): Path<(Uuid, String)>) -> Result<Response> {
+type Pool = std::sync::Arc<sqlx_tracing::Pool<sqlx::Postgres>>;
+
+pub async fn get_entry(State(pool): State<Pool>, Path((project, key)): Path<(Uuid, String)>) -> Result<Response> {
     let entry: Option<Entry> = sqlx::query_as!(
         Entry,
         r#"
@@ -24,7 +25,7 @@ pub async fn get_entry(State(pool): State<PgPool>, Path((project, key)): Path<(U
         project,
         key
     )
-    .fetch_optional(&pool)
+    .fetch_optional(&*pool)
     .await?;
 
     let entry = entry.ok_or_else(|| AppError::KeyNotFound(key))?;
@@ -32,7 +33,7 @@ pub async fn get_entry(State(pool): State<PgPool>, Path((project, key)): Path<(U
     Ok((StatusCode::OK, [(header::CONTENT_TYPE, entry.mime_type)], entry.content).into_response())
 }
 
-pub async fn list_entries_all(State(pool): State<PgPool>, Path(project): Path<Uuid>) -> Result<Json<Vec<KeyInfo>>> {
+pub async fn list_entries_all(State(pool): State<Pool>, Path(project): Path<Uuid>) -> Result<Json<Vec<KeyInfo>>> {
     let entries: Vec<KeyInfo> = sqlx::query_as!(
         KeyInfo,
         r#"
@@ -43,14 +44,14 @@ pub async fn list_entries_all(State(pool): State<PgPool>, Path(project): Path<Uu
         "#,
         project
     )
-    .fetch_all(&pool)
+    .fetch_all(&*pool)
     .await?;
 
     Ok(Json(entries))
 }
 
 pub async fn list_entries(
-    State(pool): State<PgPool>,
+    State(pool): State<Pool>,
     Path((project, prefix)): Path<(Uuid, String)>,
 ) -> Result<Json<Vec<KeyInfo>>> {
     // Escape SQL LIKE wildcards
@@ -70,14 +71,14 @@ pub async fn list_entries(
         project,
         pattern
     )
-    .fetch_all(&pool)
+    .fetch_all(&*pool)
     .await?;
 
     Ok(Json(entries))
 }
 
 pub async fn store_entry(
-    State(pool): State<PgPool>,
+    State(pool): State<Pool>,
     Path((project, key)): Path<(Uuid, String)>,
     headers: HeaderMap,
     body: Bytes,
@@ -92,7 +93,7 @@ pub async fn store_entry(
     // Create project if it doesn't exist
     sqlx::query("INSERT INTO projects (id) VALUES ($1) ON CONFLICT (id) DO NOTHING")
         .bind(project)
-        .execute(&pool)
+        .execute(&*pool)
         .await?;
 
     // Upsert entry
@@ -111,20 +112,20 @@ pub async fn store_entry(
     .bind(&key)
     .bind(&mime_type)
     .bind(body.as_ref())
-    .execute(&pool)
+    .execute(&*pool)
     .await?;
 
     Ok(StatusCode::CREATED)
 }
 
 pub async fn delete_entry(
-    State(pool): State<PgPool>,
+    State(pool): State<Pool>,
     Path((project, key)): Path<(Uuid, String)>,
 ) -> Result<StatusCode> {
     let result = sqlx::query("DELETE FROM entries WHERE project_id = $1 AND key = $2")
         .bind(project)
         .bind(&key)
-        .execute(&pool)
+        .execute(&*pool)
         .await?;
 
     if result.rows_affected() == 0 {

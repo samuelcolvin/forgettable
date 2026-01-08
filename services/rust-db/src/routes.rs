@@ -2,11 +2,11 @@ use axum::{
     Router,
     routing::{delete, get, post},
 };
-use sqlx::PgPool;
+use axum_tracing_opentelemetry::middleware::{OtelAxumLayer, OtelInResponseLayer};
 
 use crate::handlers::entries;
 
-pub fn create_router(pool: PgPool) -> Router {
+pub fn create_router(pool: std::sync::Arc<sqlx_tracing::Pool<sqlx::Postgres>>) -> Router {
     Router::new()
         // Entry operations - more specific routes first
         .route("/project/{project}/get/{*key}", get(entries::get_entry))
@@ -16,4 +16,6 @@ pub fn create_router(pool: PgPool) -> Router {
         .route("/project/{project}/{*key}", post(entries::store_entry))
         .route("/project/{project}/{*key}", delete(entries::delete_entry))
         .with_state(pool)
+        .layer(OtelAxumLayer::default())
+        .layer(OtelInResponseLayer::default())
 }

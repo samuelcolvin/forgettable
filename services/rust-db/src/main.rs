@@ -1,7 +1,6 @@
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc};
 
 use sqlx::postgres::PgPoolOptions;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod config;
 mod error;
@@ -13,23 +12,21 @@ use config::Config;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize tracing
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "rust_db=debug,tower_http=debug".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    // Initialize logfire (sets up tracing subscriber automatically)
+    let logfire = logfire::configure()
+        .with_service_name("rust-db")
+        .finish()?;
+    let _shutdown_guard = logfire.shutdown_guard();
 
     // Load configuration
     let config = Config::from_env()?;
 
-    // Create database pool
+    // Create database pool wrapped with sqlx-tracing for OTEL spans
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&config.database_url)
         .await?;
+    let pool = Arc::new(sqlx_tracing::Pool::from(pool));
 
     // Build router
     let app = routes::create_router(pool);
