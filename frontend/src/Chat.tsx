@@ -1,6 +1,6 @@
 import { useChat } from '@ai-sdk/react'
-import type { UIMessage } from 'ai'
-import { type FormEvent, useEffect, useRef, useState } from 'react'
+import { DefaultChatTransport, type UIMessage } from 'ai'
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Conversation, ConversationContent, ConversationScrollButton } from '@/components/ai-elements/conversation'
 import { Loader } from '@/components/ai-elements/loader'
@@ -35,7 +35,8 @@ function hasCompletedFileOp(message: UIMessage): boolean {
 
 export function Chat({ projectId, onFileChange }: ChatProps) {
   const [input, setInput] = useState('')
-  const { messages, append, status, error } = useChat({ api: `/api/${projectId}/chat` })
+  const transport = useMemo(() => new DefaultChatTransport({ api: `/api/${projectId}/chat` }), [projectId])
+  const { messages, sendMessage, status, error } = useChat({ transport })
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const lastRefreshedMsgRef = useRef<string>('')
 
@@ -53,7 +54,7 @@ export function Chat({ projectId, onFileChange }: ChatProps) {
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
     if (input.trim()) {
-      append({ role: 'user', content: input }).catch((err: unknown) => {
+      sendMessage({ text: input }).catch((err: unknown) => {
         console.error('Error sending message:', err)
       })
       setInput('')
