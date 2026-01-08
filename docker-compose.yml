@@ -23,6 +23,7 @@ services:
       PORT: "3000"
       PYTHON_AGENT_URL: http://python-agent:3000
       RUST_DB_URL: http://rust-db:3000
+      LOGFIRE_TOKEN: ${LOGFIRE_TOKEN}
 
   python-agent:
     build: ./services/python-agent
@@ -33,6 +34,7 @@ services:
     environment:
       BUILD_ENDPOINT: http://node-build:3000/build
       PYDANTIC_AI_GATEWAY_API_KEY: ${PYDANTIC_AI_GATEWAY_API_KEY}
+      LOGFIRE_TOKEN: ${LOGFIRE_TOKEN}
       PORT: "3000"
 
   rust-db:
