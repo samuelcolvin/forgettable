@@ -5,14 +5,5 @@ A build-as-a-service server that compiles React/TypeScript applications on-deman
 ## Example
 
 ```bash
-cat > request.json << 'EOF'
-{
-  "entryPoint": "src/main.tsx",
-  "files": {
-    "src/main.tsx": "import ReactDOM from \"react-dom/client\";\nfunction App() { return <div>Hello World</div>; }\nReactDOM.createRoot(document.getElementById(\"root\")!).render(<App />);"
-  }
-}
-EOF
-
-curl -X POST http://localhost:3000/build -H "Content-Type: application/json" -d @request.json
+http POST :3003/build Content-Type:application/json < services/node-build/example_request.json
 ```
