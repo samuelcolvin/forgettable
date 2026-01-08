@@ -1,7 +1,10 @@
 use std::net::SocketAddr;
 
-use sqlx::postgres::PgPoolOptions;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use sqlx::{
+    ConnectOptions,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
+use tracing::log::LevelFilter;
 
 mod config;
 mod error;
@@ -13,22 +16,21 @@ use config::Config;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize tracing
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "rust_db=debug,tower_http=debug".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    // Initialize logfire (sets up tracing subscriber automatically)
+    let logfire = logfire::configure()
+        .with_service_name("rust-db")
+        .finish()?;
+    let _shutdown_guard = logfire.shutdown_guard();
 
     // Load configuration
     let config = Config::from_env()?;
 
-    // Create database pool
+    // Create database pool with query logging
+    let connect_options: PgConnectOptions = config.database_url.parse()?;
+    let connect_options = connect_options.log_statements(LevelFilter::Info);
     let pool = PgPoolOptions::new()
         .max_connections(5)
-        .connect(&config.database_url)
+        .connect_with(connect_options)
         .await?;
 
     // Build router

@@ -3,6 +3,7 @@ use axum::{
     routing::{delete, get, post},
 };
 use sqlx::PgPool;
+use tower_http::trace::TraceLayer;
 
 use crate::handlers::entries;
 
@@ -16,4 +17,5 @@ pub fn create_router(pool: PgPool) -> Router {
         .route("/project/{project}/{*key}", post(entries::store_entry))
         .route("/project/{project}/{*key}", delete(entries::delete_entry))
         .with_state(pool)
+        .layer(TraceLayer::new_for_http())
 }

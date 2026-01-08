@@ -44,6 +44,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://postgres@postgres:5432/postgres
+      LOGFIRE_TOKEN: ${LOGFIRE_TOKEN}
       PORT: "3000"
 
   node-build:
