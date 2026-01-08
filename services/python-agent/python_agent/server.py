@@ -1,15 +1,19 @@
 """FastAPI server for the React builder agent."""
 
+import logfire
 from fastapi import FastAPI
 
 from .agent import run_agent
 from .models import CreateAppRequest, CreateAppResponse, EditAppRequest, EditAppResponse
 
+logfire.configure()
+logfire.instrument_pydantic_ai()
+
 app = FastAPI(
     title='React Builder Agent',
     description='A pydantic-ai powered agent that builds React applications',
-    version='0.1.0',
 )
+logfire.instrument_fastapi(app)
 
 
 @app.post('/apps')

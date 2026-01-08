@@ -19,7 +19,8 @@
       "Bash(docker:*)",
       "Bash(ls:*)",
       "WebFetch(domain:ai.pydantic.dev)",
-      "WebFetch(domain:fastapi.tiangolo.com)"
+      "WebFetch(domain:fastapi.tiangolo.com)",
+      "WebFetch(domain:logfire.pydantic.dev)"
     ]
   }
 }
