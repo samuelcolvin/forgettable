@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -51,21 +52,37 @@ func main() {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.RequestID)
 
-	// Routes
-	r.Get("/", h.HandleRoot)
-	r.Get("/health", h.HandleHealth)
+	// API routes
+	r.Route("/api", func(r chi.Router) {
+		r.Get("/health", h.HandleHealth)
 
-	// Project routes
-	r.Route("/{uuid}", func(r chi.Router) {
-		r.Get("/", h.HandleProject)
-		r.Get("/state", h.HandleGetState)
-		r.Post("/conversation", h.HandleSaveConversation)
-		r.Post("/create", h.HandleCreate)
-		r.Post("/edit", h.HandleEdit)
-		r.Post("/chat", h.HandleChat)
-		r.Get("/view", h.HandleView)
-		r.Get("/view/assets/*", h.HandleAsset)
-		r.Get("/assets/*", h.HandleAsset) // Alias for relative URL resolution from /view
+		// Project API routes
+		r.Route("/{uuid}", func(r chi.Router) {
+			r.Get("/state", h.HandleGetState)
+			r.Post("/conversation", h.HandleSaveConversation)
+			r.Post("/create", h.HandleCreate)
+			r.Post("/edit", h.HandleEdit)
+			r.Post("/chat", h.HandleChat)
+			r.Get("/view", h.HandleView)
+			r.Get("/view/assets/*", h.HandleAsset)
+			r.Get("/assets/*", h.HandleAsset) // Alias for relative URL resolution from /view
+		})
+	})
+
+	// Serve static files from dist/ directory
+	fileServer := http.FileServer(http.Dir("dist"))
+	r.Get("/assets/*", func(w http.ResponseWriter, r *http.Request) {
+		fileServer.ServeHTTP(w, r)
+	})
+
+	// SPA fallback - serve index.html for all non-API routes
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		// Don't serve SPA for API routes that weren't matched
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			http.NotFound(w, r)
+			return
+		}
+		http.ServeFile(w, r, "dist/index.html")
 	})
 
 	// Start server

@@ -12,11 +12,18 @@ services:
       timeout: 5s
       retries: 5
 
+  frontend:
+    build: ./frontend
+
   go-main:
-    build: ./services/go-main
+    build:
+      context: ./services/go-main
+      additional_contexts:
+        frontend: service:frontend
     ports:
       - "3000:3000"
     depends_on:
+      - frontend
       - python-agent
       - rust-db
       - node-build

@@ -3,11 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
-	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
 	"io"
 	"log"
 	"net/http"
@@ -16,11 +14,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
-
-//go:embed index.html
-var indexHTML string
-
-var indexTemplate = template.Must(template.New("index").Parse(indexHTML))
 
 // AppError represents an application error with HTTP status code.
 type AppError struct {
@@ -85,29 +78,10 @@ func validateUUID(id string) error {
 	return nil
 }
 
-// HandleRoot redirects to a new project.
-func (h *Handlers) HandleRoot(w http.ResponseWriter, r *http.Request) {
-	newUUID := uuid.New().String()
-	http.Redirect(w, r, "/"+newUUID, http.StatusFound)
-}
-
 // HandleHealth returns a health check response.
 func (h *Handlers) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("OK"))
-}
-
-// HandleProject serves the main application page.
-func (h *Handlers) HandleProject(w http.ResponseWriter, r *http.Request) {
-	projectID := chi.URLParam(r, "uuid")
-	if err := validateUUID(projectID); err != nil {
-		writeError(w, err)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html")
-	w.WriteHeader(http.StatusOK)
-	_ = indexTemplate.Execute(w, struct{ ProjectID string }{ProjectID: projectID})
 }
 
 // CreateRequest is the request body for creating an app.

@@ -8,7 +8,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # Copy source and build
-COPY *.go *.html ./
+COPY *.go ./
 RUN CGO_ENABLED=0 GOOS=linux go build -o go-main .
 
 # Runtime stage
@@ -19,6 +19,7 @@ RUN apk --no-cache add ca-certificates
 WORKDIR /app
 
 COPY --from=builder /app/go-main ./go-main
+COPY --from=frontend /app/dist ./dist
 
 ENV PORT=3000
 
