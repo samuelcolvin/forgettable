@@ -85,22 +85,23 @@ export async function buildProject(request: BuildRequest): Promise<BuildResponse
   return await logfire.span('buildProject', {
     attributes: { buildId },
     callback: async () => {
-      // Create temp directory and write input files
-      await logfire.span('write input files', {
-        callback: async () => {
-          await fs.mkdir(tempDir, { recursive: true });
+      try {
+        // Create temp directory and write input files
+        await logfire.span('write input files', {
+          callback: async () => {
+            await fs.mkdir(tempDir, { recursive: true });
 
-          // Copy shadcn components and utilities to temp directory
-          await copyDir(SHADCN_DIR, path.join(tempDir, 'shadcn'));
+            // Copy shadcn components and utilities to temp directory
+            await copyDir(SHADCN_DIR, path.join(tempDir, 'shadcn'));
 
-          for (const [filePath, content] of Object.entries(request.files)) {
-            const fullPath = path.join(tempDir, filePath);
-            await fs.mkdir(path.dirname(fullPath), { recursive: true });
-            await fs.writeFile(fullPath, content, 'utf-8');
-          }
+            for (const [filePath, content] of Object.entries(request.files)) {
+              const fullPath = path.join(tempDir, filePath);
+              await fs.mkdir(path.dirname(fullPath), { recursive: true });
+              await fs.writeFile(fullPath, content, 'utf-8');
+            }
 
-          // Generate main.tsx entry point that imports App from ./app
-          const mainTsx = `import { StrictMode } from 'react';
+            // Generate main.tsx entry point that imports App from ./app
+            const mainTsx = `import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './shadcn/globals.css';
 import App from './app';
@@ -111,10 +112,10 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>
 );
 `;
-          await fs.writeFile(path.join(tempDir, 'main.tsx'), mainTsx, 'utf-8');
+            await fs.writeFile(path.join(tempDir, 'main.tsx'), mainTsx, 'utf-8');
 
-          // Generate index.html that references main.tsx
-          const indexHtml = `<!DOCTYPE html>
+            // Generate index.html that references main.tsx
+            const indexHtml = `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -126,117 +127,123 @@ createRoot(document.getElementById('root')!).render(
     <script type="module" src="/main.tsx"></script>
   </body>
 </html>`;
-          await fs.writeFile(path.join(tempDir, 'index.html'), indexHtml, 'utf-8');
-        },
-      });
+            await fs.writeFile(path.join(tempDir, 'index.html'), indexHtml, 'utf-8');
+          },
+        });
 
-      // Run biome check with auto-fix on user-provided files
-      const inputFiles = Object.keys(request.files)
-      const biomeError = await logfire.span('biome check', {
-        callback: async () => runBiomeCheck(tempDir, inputFiles),
-      })
+        // Run biome check with auto-fix on user-provided files
+        const inputFiles = Object.keys(request.files)
+        const biomeError = await logfire.span('biome check', {
+          callback: async () => runBiomeCheck(tempDir, inputFiles),
+        })
 
-      // Read source files back (may have been modified by biome)
-      const source = await readSourceFiles(tempDir, inputFiles)
+        // Read source files back (may have been modified by biome)
+        const source = await readSourceFiles(tempDir, inputFiles)
 
-      if (biomeError) {
-        throw new Error(biomeError)
-      }
+        if (biomeError) {
+          throw new Error(biomeError)
+        }
 
-      // Run Vite build programmatically
-      await logfire.span('vite build', {
-        callback: async () => {
-          const nm = (pkg: string) => path.join(SERVER_ROOT, 'node_modules', pkg);
-          await build({
-            root: tempDir,
-            configFile: false,
-            logLevel: 'error',
-            plugins: [react(), tailwindcss()],
-            resolve: {
-              alias: [
-                // React aliases
-                { find: 'react', replacement: nm('react') },
-                { find: 'react-dom', replacement: nm('react-dom') },
-                { find: 'react/jsx-runtime', replacement: nm('react/jsx-runtime') },
-                { find: 'react/jsx-dev-runtime', replacement: nm('react/jsx-dev-runtime') },
-                // Tailwind CSS
-                { find: 'tailwindcss', replacement: nm('tailwindcss/index.css') },
-                // shadcn path alias - maps 'shadcn/...' to temp dir
-                { find: /^shadcn\/(.*)$/, replacement: `${path.join(tempDir, 'shadcn')}/$1` },
-                // @ alias for user code
-                { find: /^@\/(.*)$/, replacement: `${tempDir}/$1` },
-                // shadcn utility dependencies
-                { find: 'class-variance-authority', replacement: nm('class-variance-authority') },
-                { find: 'clsx', replacement: nm('clsx') },
-                { find: 'tailwind-merge', replacement: nm('tailwind-merge') },
-                { find: 'lucide-react', replacement: nm('lucide-react') },
-                // Radix UI primitives
-                { find: '@radix-ui/react-accordion', replacement: nm('@radix-ui/react-accordion') },
-                { find: '@radix-ui/react-alert-dialog', replacement: nm('@radix-ui/react-alert-dialog') },
-                { find: '@radix-ui/react-avatar', replacement: nm('@radix-ui/react-avatar') },
-                { find: '@radix-ui/react-checkbox', replacement: nm('@radix-ui/react-checkbox') },
-                { find: '@radix-ui/react-dialog', replacement: nm('@radix-ui/react-dialog') },
-                { find: '@radix-ui/react-dropdown-menu', replacement: nm('@radix-ui/react-dropdown-menu') },
-                { find: '@radix-ui/react-label', replacement: nm('@radix-ui/react-label') },
-                { find: '@radix-ui/react-popover', replacement: nm('@radix-ui/react-popover') },
-                { find: '@radix-ui/react-progress', replacement: nm('@radix-ui/react-progress') },
-                { find: '@radix-ui/react-scroll-area', replacement: nm('@radix-ui/react-scroll-area') },
-                { find: '@radix-ui/react-select', replacement: nm('@radix-ui/react-select') },
-                { find: '@radix-ui/react-separator', replacement: nm('@radix-ui/react-separator') },
-                { find: '@radix-ui/react-slot', replacement: nm('@radix-ui/react-slot') },
-                { find: '@radix-ui/react-switch', replacement: nm('@radix-ui/react-switch') },
-                { find: '@radix-ui/react-tabs', replacement: nm('@radix-ui/react-tabs') },
-                { find: '@radix-ui/react-tooltip', replacement: nm('@radix-ui/react-tooltip') },
-              ],
-            },
-            build: {
-              outDir: 'dist',
-              sourcemap: true,
-              emptyOutDir: true,
-              rollupOptions: {
-                input: path.join(tempDir, 'index.html'),
+        // Run Vite build programmatically
+        await logfire.span('vite build', {
+          callback: async () => {
+            const nm = (pkg: string) => path.join(SERVER_ROOT, 'node_modules', pkg);
+            await build({
+              root: tempDir,
+              configFile: false,
+              logLevel: 'error',
+              plugins: [react(), tailwindcss()],
+              resolve: {
+                alias: [
+                  // React aliases
+                  { find: 'react', replacement: nm('react') },
+                  { find: 'react-dom', replacement: nm('react-dom') },
+                  { find: 'react/jsx-runtime', replacement: nm('react/jsx-runtime') },
+                  { find: 'react/jsx-dev-runtime', replacement: nm('react/jsx-dev-runtime') },
+                  // Tailwind CSS
+                  { find: 'tailwindcss', replacement: nm('tailwindcss/index.css') },
+                  // shadcn path alias - maps 'shadcn/...' to temp dir
+                  { find: /^shadcn\/(.*)$/, replacement: `${path.join(tempDir, 'shadcn')}/$1` },
+                  // @ alias for user code
+                  { find: /^@\/(.*)$/, replacement: `${tempDir}/$1` },
+                  // shadcn utility dependencies
+                  { find: 'class-variance-authority', replacement: nm('class-variance-authority') },
+                  { find: 'clsx', replacement: nm('clsx') },
+                  { find: 'tailwind-merge', replacement: nm('tailwind-merge') },
+                  { find: 'lucide-react', replacement: nm('lucide-react') },
+                  // Radix UI primitives
+                  { find: '@radix-ui/react-accordion', replacement: nm('@radix-ui/react-accordion') },
+                  { find: '@radix-ui/react-alert-dialog', replacement: nm('@radix-ui/react-alert-dialog') },
+                  { find: '@radix-ui/react-avatar', replacement: nm('@radix-ui/react-avatar') },
+                  { find: '@radix-ui/react-checkbox', replacement: nm('@radix-ui/react-checkbox') },
+                  { find: '@radix-ui/react-dialog', replacement: nm('@radix-ui/react-dialog') },
+                  { find: '@radix-ui/react-dropdown-menu', replacement: nm('@radix-ui/react-dropdown-menu') },
+                  { find: '@radix-ui/react-label', replacement: nm('@radix-ui/react-label') },
+                  { find: '@radix-ui/react-popover', replacement: nm('@radix-ui/react-popover') },
+                  { find: '@radix-ui/react-progress', replacement: nm('@radix-ui/react-progress') },
+                  { find: '@radix-ui/react-scroll-area', replacement: nm('@radix-ui/react-scroll-area') },
+                  { find: '@radix-ui/react-select', replacement: nm('@radix-ui/react-select') },
+                  { find: '@radix-ui/react-separator', replacement: nm('@radix-ui/react-separator') },
+                  { find: '@radix-ui/react-slot', replacement: nm('@radix-ui/react-slot') },
+                  { find: '@radix-ui/react-switch', replacement: nm('@radix-ui/react-switch') },
+                  { find: '@radix-ui/react-tabs', replacement: nm('@radix-ui/react-tabs') },
+                  { find: '@radix-ui/react-tooltip', replacement: nm('@radix-ui/react-tooltip') },
+                ],
               },
-            },
-            cacheDir: path.join(SERVER_ROOT, 'node_modules/.vite'),
-          });
-        },
-      });
+              build: {
+                outDir: 'dist',
+                sourcemap: true,
+                emptyOutDir: true,
+                rollupOptions: {
+                  input: path.join(tempDir, 'index.html'),
+                },
+              },
+              cacheDir: path.join(SERVER_ROOT, 'node_modules/.vite'),
+            });
+          },
+        });
 
-      // Read output files from dist/
-      const compiled: BuildOutput = await logfire.span('read output files', {
-        callback: async () => {
-          const result: BuildOutput = {};
+        // Read output files from dist/
+        const compiled: BuildOutput = await logfire.span('read output files', {
+          callback: async () => {
+            const result: BuildOutput = {};
 
-          // Read index.html
-          const indexHtmlPath = path.join(distDir, 'index.html');
-          result['index.html'] = await fs.readFile(indexHtmlPath, 'utf-8');
+            // Read index.html
+            const indexHtmlPath = path.join(distDir, 'index.html');
+            result['index.html'] = await fs.readFile(indexHtmlPath, 'utf-8');
 
-          // Read assets from dist/assets/
-          const assetsDir = path.join(distDir, 'assets');
-          try {
-            const files = await fs.readdir(assetsDir);
-            for (const file of files) {
-              const filePath = path.join(assetsDir, file);
-              const stat = await fs.stat(filePath);
-              if (stat.isFile()) {
-                const content = await fs.readFile(filePath, 'utf-8');
-                result[`assets/${file}`] = content;
+            // Read assets from dist/assets/
+            const assetsDir = path.join(distDir, 'assets');
+            try {
+              const files = await fs.readdir(assetsDir);
+              for (const file of files) {
+                const filePath = path.join(assetsDir, file);
+                const stat = await fs.stat(filePath);
+                if (stat.isFile()) {
+                  const content = await fs.readFile(filePath, 'utf-8');
+                  result[`assets/${file}`] = content;
+                }
               }
+            } catch (err) {
+              // assets dir might not exist if build failed silently
+              throw new Error('Build produced no output files');
             }
-          } catch (err) {
-            // assets dir might not exist if build failed silently
-            throw new Error('Build produced no output files');
-          }
 
-          if (Object.keys(result).length <= 1) {
-            throw new Error('Build produced no output files');
-          }
+            if (Object.keys(result).length <= 1) {
+              throw new Error('Build produced no output files');
+            }
 
-          return result;
-        },
-      });
+            return result;
+          },
+        });
 
-      return { compiled, source };
+        return { compiled, source };
+      } finally {
+        // Clean up temp directory
+        fs.rm(tempDir, { recursive: true, force: true }).catch(() => {
+          // Ignore cleanup errors
+        })
+      }
     },
   });
 }
