@@ -63,8 +63,10 @@ export function Chat({ projectId, onFileChange }: ChatProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="border-b px-4 py-3">
-        <h2 className="font-semibold text-lg">Chat</h2>
-        <p className="text-muted-foreground text-xs">Describe what you want to build</p>
+        <h2 className="font-semibold text-lg">Forgettable</h2>
+        <p className="text-muted-foreground text-xs">
+          You are limited only by the paucity of your own imagination ... go on, build it
+        </p>
       </div>
 
       <Conversation className="flex-1">

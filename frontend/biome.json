@@ -1,14 +1,7 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.3.11/schema.json",
-  "vcs": {
-    "enabled": true,
-    "clientKind": "git",
-    "useIgnoreFile": true
-  },
-  "files": {
-    "ignoreUnknown": false,
-    "includes": ["**"]
-  },
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": { "ignoreUnknown": false, "includes": ["**"] },
   "formatter": {
     "formatWithErrors": true,
     "enabled": true,
@@ -20,70 +13,22 @@
     "enabled": true,
     "rules": {
       "recommended": true,
-      "suspicious": {
-        "useAwait": "error",
-        "noArrayIndexKey": "off"
-      },
-      "correctness": {
-        "noUnusedImports": "error",
-        "useUniqueElementIds": "off"
-      },
+      "suspicious": { "useAwait": "error", "noArrayIndexKey": "off" },
+      "correctness": { "noUnusedImports": "error", "useUniqueElementIds": "off" },
       "style": {
         "noNonNullAssertion": "off",
         "useTemplate": "off",
         "useNamingConvention": "error",
         "noRestrictedImports": "error"
       },
-      "nursery": {
-        "recommended": true,
-        "noFloatingPromises": "error"
-      }
+      "nursery": { "recommended": true, "noFloatingPromises": "error" }
     }
   },
-  "css": {
-    "formatter": {
-      "quoteStyle": "single"
-    },
-    "parser": {
-      "cssModules": true,
-      "tailwindDirectives": true
-    }
-  },
-  "javascript": {
-    "formatter": {
-      "trailingCommas": "all",
-      "quoteStyle": "single",
-      "semicolons": "asNeeded"
-    }
-  },
-  "assist": {
-    "enabled": true,
-    "actions": {
-      "source": {
-        "organizeImports": "on"
-      }
-    }
-  },
+  "css": { "formatter": { "quoteStyle": "single" }, "parser": { "cssModules": true, "tailwindDirectives": true } },
+  "javascript": { "formatter": { "trailingCommas": "all", "quoteStyle": "single", "semicolons": "asNeeded" } },
+  "assist": { "enabled": true, "actions": { "source": { "organizeImports": "on" } } },
   "overrides": [
-    {
-      "includes": ["src/index.css"],
-      "linter": {
-        "rules": {
-          "suspicious": {
-            "noUnknownAtRules": "off"
-          }
-        }
-      }
-    },
-    {
-      "includes": ["src/lib/tool-icons.tsx"],
-      "linter": {
-        "rules": {
-          "style": {
-            "useNamingConvention": "off"
-          }
-        }
-      }
-    }
+    { "includes": ["src/index.css"], "linter": { "rules": { "suspicious": { "noUnknownAtRules": "off" } } } },
+    { "includes": ["src/lib/tool-icons.tsx"], "linter": { "rules": { "style": { "useNamingConvention": "off" } } } }
   ]
 }
