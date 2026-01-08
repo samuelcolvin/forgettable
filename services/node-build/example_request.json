@@ -1,0 +1,5 @@
+{
+  "files": {
+    "app.tsx": "export default function App() { return <div>Hello World</div>; }"
+  }
+}
