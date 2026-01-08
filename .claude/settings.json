@@ -18,6 +18,8 @@
       "Bash(go:*)",
       "Bash(docker:*)",
       "Bash(ls:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
       "WebFetch(domain:ai.pydantic.dev)",
       "WebFetch(domain:fastapi.tiangolo.com)",
       "WebFetch(domain:logfire.pydantic.dev)",
