@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"regexp"
@@ -303,6 +305,105 @@ func (h *Handlers) HandleAsset(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", mimeType)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(content)
+}
+
+// HandleChat proxies chat requests to the Python Agent using Server-Sent Events.
+func (h *Handlers) HandleChat(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "uuid")
+	if err := validateUUID(projectID); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	// Get existing source files to provide context
+	existingFiles, err := h.storage.GetSourceFiles(r.Context(), projectID)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		writeError(w, AppError{Code: http.StatusInternalServerError, Message: fmt.Sprintf("Failed to get existing files: %v", err)})
+		return
+	}
+
+	// Read the original request body
+	originalBody, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, AppError{Code: http.StatusBadRequest, Message: "Failed to read request body"})
+		return
+	}
+
+	// Parse the original body to add files
+	var bodyData map[string]any
+	if err := json.Unmarshal(originalBody, &bodyData); err != nil {
+		writeError(w, AppError{Code: http.StatusBadRequest, Message: "Invalid JSON in request body"})
+		return
+	}
+
+	// Add existing files to the request
+	if existingFiles != nil {
+		bodyData["files"] = existingFiles
+	}
+
+	// Marshal the modified body
+	modifiedBody, err := json.Marshal(bodyData)
+	if err != nil {
+		writeError(w, AppError{Code: http.StatusInternalServerError, Message: "Failed to serialize request body"})
+		return
+	}
+
+	// Create request to Python Agent
+	chatURL := h.pythonClient.baseURL + "/chat"
+	proxyReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, chatURL, bytes.NewReader(modifiedBody))
+	if err != nil {
+		writeError(w, AppError{Code: http.StatusInternalServerError, Message: "Failed to create proxy request"})
+		return
+	}
+
+	// Copy relevant headers
+	proxyReq.Header.Set("Content-Type", "application/json")
+	if accept := r.Header.Get("Accept"); accept != "" {
+		proxyReq.Header.Set("Accept", accept)
+	}
+
+	// Make the request with a longer timeout for streaming
+	client := &http.Client{Timeout: 0} // No timeout for streaming
+	resp, err := client.Do(proxyReq)
+	if err != nil {
+		writeError(w, AppError{Code: http.StatusInternalServerError, Message: fmt.Sprintf("Failed to connect to chat service: %v", err)})
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no") // Disable nginx buffering
+
+	// Get the flusher for streaming
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, AppError{Code: http.StatusInternalServerError, Message: "Streaming not supported"})
+		return
+	}
+
+	w.WriteHeader(resp.StatusCode)
+
+	// Stream the response
+	buf := make([]byte, 1024)
+	for {
+		n, readErr := resp.Body.Read(buf)
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				log.Printf("Error writing to client: %v", writeErr)
+				return
+			}
+			flusher.Flush()
+		}
+		if readErr != nil {
+			if readErr != io.EOF {
+				log.Printf("Error reading from Python Agent: %v", readErr)
+			}
+			return
+		}
+	}
 }
 
 // rewriteAssetPaths rewrites asset paths in HTML to go through our service.

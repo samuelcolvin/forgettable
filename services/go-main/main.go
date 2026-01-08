@@ -59,6 +59,7 @@ func main() {
 		r.Get("/", h.HandleProject)
 		r.Post("/create", h.HandleCreate)
 		r.Post("/edit", h.HandleEdit)
+		r.Post("/chat", h.HandleChat)
 		r.Get("/view", h.HandleView)
 		r.Get("/view/assets/*", h.HandleAsset)
 	})

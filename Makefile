@@ -40,6 +40,10 @@ lint-go: ## Lint Go code with golangci-lint
 	cd services/go-main && go mod tidy -diff
 	cd services/go-main && golangci-lint run
 
+.PHONY: dev-frontend
+dev-frontend: ## Run frontend dev server
+	cd frontend && pnpm dev
+
 .PHONY: create-schema
 create-schema: ## Create database schema (requires DATABASE_URL)
 	psql $(DATABASE_URL) -f services/rust-db/schema.sql
