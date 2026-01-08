@@ -46,6 +46,7 @@ services:
       DATABASE_URL: postgresql://postgres@postgres:5432/postgres
       LOGFIRE_TOKEN: ${LOGFIRE_TOKEN}
       PORT: "3000"
+      RUST_LOG: info
 
   node-build:
     build: ./services/node-build
