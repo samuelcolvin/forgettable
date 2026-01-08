@@ -9,6 +9,7 @@ type Config struct {
 	Port           int
 	PythonAgentURL string
 	RustDBURL      string
+	NodeBuildURL   string
 }
 
 func LoadConfig() Config {
@@ -16,6 +17,7 @@ func LoadConfig() Config {
 		Port:           getEnvInt("PORT", 3002),
 		PythonAgentURL: getEnv("PYTHON_AGENT_URL", "http://localhost:8000"),
 		RustDBURL:      getEnv("RUST_DB_URL", "http://localhost:3001"),
+		NodeBuildURL:   getEnv("NODE_BUILD_URL", "http://localhost:3000"),
 	}
 }
 

@@ -1,11 +1,12 @@
 package main
 
 import (
-	_ "embed"
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"regexp"
@@ -13,11 +14,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
-
-//go:embed index.html
-var indexHTML string
-
-var indexTemplate = template.Must(template.New("index").Parse(indexHTML))
 
 // AppError represents an application error with HTTP status code.
 type AppError struct {
@@ -38,15 +34,17 @@ var (
 
 // Handlers contains HTTP handlers and their dependencies.
 type Handlers struct {
-	pythonClient *PythonAgentClient
-	storage      *Storage
+	pythonClient    *PythonAgentClient
+	nodeBuildClient *NodeBuildClient
+	storage         *Storage
 }
 
 // NewHandlers creates a new Handlers instance.
-func NewHandlers(pythonClient *PythonAgentClient, storage *Storage) *Handlers {
+func NewHandlers(pythonClient *PythonAgentClient, nodeBuildClient *NodeBuildClient, storage *Storage) *Handlers {
 	return &Handlers{
-		pythonClient: pythonClient,
-		storage:      storage,
+		pythonClient:    pythonClient,
+		nodeBuildClient: nodeBuildClient,
+		storage:         storage,
 	}
 }
 
@@ -80,29 +78,10 @@ func validateUUID(id string) error {
 	return nil
 }
 
-// HandleRoot redirects to a new project.
-func (h *Handlers) HandleRoot(w http.ResponseWriter, r *http.Request) {
-	newUUID := uuid.New().String()
-	http.Redirect(w, r, "/"+newUUID, http.StatusFound)
-}
-
 // HandleHealth returns a health check response.
 func (h *Handlers) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("OK"))
-}
-
-// HandleProject serves the main application page.
-func (h *Handlers) HandleProject(w http.ResponseWriter, r *http.Request) {
-	projectID := chi.URLParam(r, "uuid")
-	if err := validateUUID(projectID); err != nil {
-		writeError(w, err)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html")
-	w.WriteHeader(http.StatusOK)
-	_ = indexTemplate.Execute(w, struct{ ProjectID string }{ProjectID: projectID})
 }
 
 // CreateRequest is the request body for creating an app.
@@ -305,19 +284,224 @@ func (h *Handlers) HandleAsset(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(content)
 }
 
-// rewriteAssetPaths rewrites asset paths in HTML to go through our service.
-func rewriteAssetPaths(html, projectID string) string {
-	// Replace /assets/ with /{uuid}/view/assets/
+// HandleChat proxies chat requests to the Python Agent using Server-Sent Events.
+// It intercepts the stream to extract file operations and stores them to rust-db.
+func (h *Handlers) HandleChat(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "uuid")
+	if err := validateUUID(projectID); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	// Get existing source files to provide context
+	existingFiles, err := h.storage.GetSourceFiles(r.Context(), projectID)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		writeError(w, AppError{Code: http.StatusInternalServerError, Message: fmt.Sprintf("Failed to get existing files: %v", err)})
+		return
+	}
+	if existingFiles == nil {
+		existingFiles = make(map[string]string)
+	}
+
+	// Read the original request body
+	originalBody, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, AppError{Code: http.StatusBadRequest, Message: "Failed to read request body"})
+		return
+	}
+
+	// Parse the original body to add files
+	var bodyData map[string]any
+	if unmarshalErr := json.Unmarshal(originalBody, &bodyData); unmarshalErr != nil {
+		writeError(w, AppError{Code: http.StatusBadRequest, Message: "Invalid JSON in request body"})
+		return
+	}
+
+	// Add existing files to the request
+	bodyData["files"] = existingFiles
+
+	// Marshal the modified body
+	modifiedBody, err := json.Marshal(bodyData)
+	if err != nil {
+		writeError(w, AppError{Code: http.StatusInternalServerError, Message: "Failed to serialize request body"})
+		return
+	}
+
+	// Create request to Python Agent
+	chatURL := h.pythonClient.baseURL + "/chat"
+	proxyReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, chatURL, bytes.NewReader(modifiedBody))
+	if err != nil {
+		writeError(w, AppError{Code: http.StatusInternalServerError, Message: "Failed to create proxy request"})
+		return
+	}
+
+	// Copy relevant headers
+	proxyReq.Header.Set("Content-Type", "application/json")
+	if accept := r.Header.Get("Accept"); accept != "" {
+		proxyReq.Header.Set("Accept", accept)
+	}
+
+	// Make the request with a longer timeout for streaming
+	client := &http.Client{Timeout: 0} // No timeout for streaming
+	resp, err := client.Do(proxyReq)
+	if err != nil {
+		writeError(w, AppError{Code: http.StatusInternalServerError, Message: fmt.Sprintf("Failed to connect to chat service: %v", err)})
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no") // Disable nginx buffering
+
+	// Get the flusher for streaming
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, AppError{Code: http.StatusInternalServerError, Message: "Streaming not supported"})
+		return
+	}
+
+	w.WriteHeader(resp.StatusCode)
+
+	// Create SSE parser to intercept file operations
+	parser := NewSSEParser(resp.Body, existingFiles)
+	var hadFileOps bool
+
+	// Stream and parse events
+	for {
+		event, readErr := parser.ReadEvent()
+		if readErr != nil {
+			if readErr != io.EOF {
+				log.Printf("Error reading from Python Agent: %v", readErr)
+			}
+			break
+		}
+
+		// Write the raw event to the client
+		if _, writeErr := w.Write([]byte(event.RawLine)); writeErr != nil {
+			log.Printf("Error writing to client: %v", writeErr)
+			return
+		}
+		flusher.Flush()
+
+		// Process file operations
+		if event.FileOp != nil {
+			hadFileOps = true
+			switch event.FileOp.Type {
+			case "create", "edit":
+				// Get the updated content from the parser's tracked state
+				content := parser.GetFiles()[event.FileOp.FilePath]
+				if storeErr := h.storage.StoreSourceFile(r.Context(), projectID, event.FileOp.FilePath, content); storeErr != nil {
+					log.Printf("Error storing file %s: %v", event.FileOp.FilePath, storeErr)
+				}
+			case "delete":
+				if delErr := h.storage.DeleteSourceFile(r.Context(), projectID, event.FileOp.FilePath); delErr != nil {
+					log.Printf("Error deleting file %s: %v", event.FileOp.FilePath, delErr)
+				}
+			}
+		}
+
+		// On finish, trigger compilation if there were file operations
+		if event.IsFinished && hadFileOps {
+			go h.compileAndStore(projectID, parser.GetFiles())
+		}
+	}
+}
+
+// compileAndStore compiles source files and stores the compiled output.
+func (h *Handlers) compileAndStore(projectID string, files map[string]string) {
+	ctx := context.Background()
+
+	// Compile via Node Build
+	compiledFiles, err := h.nodeBuildClient.Build(ctx, files)
+	if err != nil {
+		log.Printf("Error compiling project %s: %v", projectID, err)
+		return
+	}
+
+	// Store compiled files
+	if err := h.storage.StoreCompiledFiles(ctx, projectID, compiledFiles); err != nil {
+		log.Printf("Error storing compiled files for project %s: %v", projectID, err)
+	}
+
+	log.Printf("Successfully compiled and stored project %s", projectID)
+}
+
+// StateResponse is the response for the state endpoint.
+type StateResponse struct {
+	HasApp       bool            `json:"hasApp"`
+	Conversation json.RawMessage `json:"conversation,omitempty"`
+	Metadata     *AppMetadata    `json:"metadata,omitempty"`
+}
+
+// HandleGetState returns the current state of a project.
+func (h *Handlers) HandleGetState(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "uuid")
+	if err := validateUUID(projectID); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	resp := StateResponse{
+		HasApp: h.storage.HasApp(r.Context(), projectID),
+	}
+
+	// Try to get conversation
+	conversation, err := h.storage.GetConversation(r.Context(), projectID)
+	if err == nil {
+		resp.Conversation = conversation
+	}
+
+	// Try to get metadata
+	metadata, err := h.storage.GetMetadata(r.Context(), projectID)
+	if err == nil {
+		resp.Metadata = metadata
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// SaveConversationRequest is the request body for saving conversation.
+type SaveConversationRequest struct {
+	Messages json.RawMessage `json:"messages"`
+}
+
+// HandleSaveConversation saves the conversation state.
+func (h *Handlers) HandleSaveConversation(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "uuid")
+	if err := validateUUID(projectID); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	var req SaveConversationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, AppError{Code: http.StatusBadRequest, Message: "Invalid JSON"})
+		return
+	}
+
+	if err := h.storage.StoreConversation(r.Context(), projectID, req.Messages); err != nil {
+		writeError(w, AppError{Code: http.StatusInternalServerError, Message: fmt.Sprintf("Failed to store conversation: %v", err)})
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// rewriteAssetPaths rewrites asset paths in HTML to use relative paths.
+// This ensures assets load correctly whether accessed directly or via proxy.
+// When accessed via /api/{uuid}/view, relative paths like ./assets/ resolve
+// to /api/{uuid}/view/assets/ which correctly goes through the proxy.
+func rewriteAssetPaths(html, _ string) string {
+	// Replace /assets/ with ./assets/ (relative path)
 	re := regexp.MustCompile(`(src|href)=["'](/assets/)`)
-	html = re.ReplaceAllString(html, fmt.Sprintf(`$1="/%s/view/assets/`, projectID))
+	html = re.ReplaceAllString(html, `$1="./assets/`)
 
-	// Also handle relative paths (assets/ without leading /)
+	// Also handle assets/ without leading / (already relative, just ensure ./ prefix)
 	re2 := regexp.MustCompile(`(src|href)=["'](assets/)`)
-	html = re2.ReplaceAllString(html, fmt.Sprintf(`$1="/%s/view/assets/`, projectID))
-
-	// Handle paths that start with ./assets/
-	re3 := regexp.MustCompile(`(src|href)=["'](\.\/assets/)`)
-	html = re3.ReplaceAllString(html, fmt.Sprintf(`$1="/%s/view/assets/`, projectID))
+	html = re2.ReplaceAllString(html, `$1="./assets/`)
 
 	return html
 }

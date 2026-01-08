@@ -20,11 +20,12 @@
       "Bash(ls:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
+      "Bash(lsof:*)",
       "WebFetch(domain:ai.pydantic.dev)",
       "WebFetch(domain:fastapi.tiangolo.com)",
       "WebFetch(domain:logfire.pydantic.dev)",
-      "mcp__logfire__schema_reference",
-      "mcp__logfire__arbitrary_query"
+      "mcp__logfire__*",
+      "mcp__playwright__*"
     ]
   }
 }

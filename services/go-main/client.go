@@ -248,3 +248,50 @@ func (c *RustDBClient) Delete(ctx context.Context, project, key string) error {
 	}
 	return nil
 }
+
+// NodeBuildClient handles communication with the Node Build service.
+type NodeBuildClient struct {
+	baseURL string
+}
+
+// NewNodeBuildClient creates a new Node Build client.
+func NewNodeBuildClient(baseURL string) *NodeBuildClient {
+	return &NodeBuildClient{baseURL: baseURL}
+}
+
+// BuildRequest is the request body for building an app.
+type BuildRequest struct {
+	Files map[string]string `json:"files"`
+}
+
+// Build compiles the source files and returns compiled assets.
+func (c *NodeBuildClient) Build(ctx context.Context, files map[string]string) (map[string]string, error) {
+	reqBody := BuildRequest{Files: files}
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/build", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("node build request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("node build error (%d): %s", resp.StatusCode, respBody)
+	}
+
+	var result map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+	return result, nil
+}

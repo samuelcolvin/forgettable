@@ -1,2 +1,5 @@
 /worktrees/
 .claude/settings.local.json
+ai-chat-ui/
+.playwright-mcp/
+services/go-main/go-main
