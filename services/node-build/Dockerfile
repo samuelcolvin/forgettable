@@ -11,6 +11,9 @@ COPY package.json pnpm-lock.yaml ./
 # Install all dependencies (including devDependencies for Vite builds)
 RUN pnpm install --frozen-lockfile
 
+# Biome config is required at runtime (build validation step)
+COPY biome.jsonc ./
+
 # Copy source and compile TypeScript
 COPY tsconfig.json ./
 COPY src ./src

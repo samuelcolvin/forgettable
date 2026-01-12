@@ -264,6 +264,12 @@ type BuildRequest struct {
 	Files map[string]string `json:"files"`
 }
 
+// BuildResponse is the response from the build service.
+type BuildResponse struct {
+	Compiled map[string]string `json:"compiled"`
+	Source   map[string]string `json:"source"`
+}
+
 // Build compiles the source files and returns compiled assets.
 func (c *NodeBuildClient) Build(ctx context.Context, files map[string]string) (map[string]string, error) {
 	reqBody := BuildRequest{Files: files}
@@ -289,9 +295,9 @@ func (c *NodeBuildClient) Build(ctx context.Context, files map[string]string) (m
 		return nil, fmt.Errorf("node build error (%d): %s", resp.StatusCode, respBody)
 	}
 
-	var result map[string]string
+	var result BuildResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
-	return result, nil
+	return result.Compiled, nil
 }

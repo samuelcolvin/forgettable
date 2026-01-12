@@ -404,8 +404,9 @@ func (h *Handlers) HandleChat(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// On finish, trigger compilation if there were file operations
+		// Run synchronously so the client knows the app is ready when the stream ends
 		if event.IsFinished && hadFileOps {
-			go h.compileAndStore(projectID, parser.GetFiles())
+			h.compileAndStore(projectID, parser.GetFiles())
 		}
 	}
 }

@@ -5,14 +5,12 @@ import os
 import httpx
 import logfire
 from pydantic_ai import Agent, ModelRetry, RunContext, TextOutput
+from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.providers.gateway import gateway_provider
 
 from .models import AppDependencies, Diff, DiffHunk
 
 BUILD_ENDPOINT = os.environ.get('BUILD_ENDPOINT', 'http://localhost:3002/build')
-
-# MODEL = 'gateway/anthropic:claude-opus-4-5'
-# MODEL = 'gateway/anthropic:claude-sonnet-4-5'
-MODEL = 'gateway/anthropic:claude-haiku-4-5'
 
 SYSTEM_INSTRUCTIONS = """\
 You are a React application builder. Create client-side React applications following these rules:
@@ -73,8 +71,13 @@ async def submit_files(ctx: RunContext[AppDependencies], text: str) -> str:
         raise ModelRetry(response.text)
 
 
+# model = 'gateway/anthropic:claude-opus-4-5'
+# model = 'gateway/anthropic:claude-sonnet-4-5'
+# model = 'gateway/anthropic:claude-haiku-4-5'
+provider = gateway_provider('anthropic', route='builtin-anthropic')
+model = AnthropicModel('claude-sonnet-4-5', provider=provider)
 agent: Agent[AppDependencies, str] = Agent(
-    MODEL,
+    model,
     deps_type=AppDependencies,
     output_type=TextOutput(submit_files),
     instructions=SYSTEM_INSTRUCTIONS,
