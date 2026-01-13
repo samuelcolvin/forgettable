@@ -56,7 +56,6 @@ export default function App() {
     )
     assert response.status_code == 200
     data = response.json()
-    assert 'diffs' in data
     assert 'files' in data
     assert 'summary' in data
     assert 'src/App.tsx' in data['files']

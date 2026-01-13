@@ -50,20 +50,8 @@ type EditAppRequest struct {
 	Files  map[string]string `json:"files"`
 }
 
-// DiffHunk represents a single search/replace operation.
-type DiffHunk struct {
-	Search  string `json:"search"`
-	Replace string `json:"replace"`
-}
-
-// Diff represents changes to a file.
-type Diff struct {
-	Hunks []DiffHunk `json:"hunks"`
-}
-
 // EditAppResponse is the response from editing an app.
 type EditAppResponse struct {
-	Diffs         map[string]Diff   `json:"diffs"`
 	Files         map[string]string `json:"files"`
 	CompiledFiles map[string]string `json:"compiled_files"`
 	Summary       string            `json:"summary"`

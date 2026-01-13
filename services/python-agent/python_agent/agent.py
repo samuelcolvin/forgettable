@@ -8,7 +8,7 @@ from pydantic_ai import Agent, ModelRetry, RunContext, TextOutput
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.providers.gateway import gateway_provider
 
-from .models import AppDependencies, Diff, DiffHunk
+from .models import AppDependencies
 
 BUILD_ENDPOINT = os.environ.get('BUILD_ENDPOINT', 'http://localhost:3002/build')
 
@@ -74,7 +74,7 @@ async def submit_files(ctx: RunContext[AppDependencies], text: str) -> str:
 # model = 'gateway/anthropic:claude-opus-4-5'
 # model = 'gateway/anthropic:claude-sonnet-4-5'
 # model = 'gateway/anthropic:claude-haiku-4-5'
-provider = gateway_provider('anthropic', route='builtin-anthropic')
+provider = gateway_provider('anthropic', route='builtin-google-vertex')
 model = AnthropicModel('claude-sonnet-4-5', provider=provider)
 agent: Agent[AppDependencies, str] = Agent(
     model,
@@ -102,39 +102,43 @@ def create_file(ctx: RunContext[AppDependencies], file_path: str, content: str) 
 
 
 @agent.tool
-def edit_file(ctx: RunContext[AppDependencies], file_path: str, diff: Diff) -> str:
-    """Edit an existing file by applying search/replace operations.
+def edit_file(
+    ctx: RunContext[AppDependencies],
+    path: str,
+    old_str: str,
+    new_str: str,
+    replace_all: bool = False,
+) -> str:
+    """Edit a file by replacing a specific string with another string.
 
     Args:
         ctx: The run context containing app dependencies.
-        file_path: The path of the file to edit.
-        diff: A Diff object containing hunks of search/replace operations.
+        path: The file path.
+        old_str: The exact text to find (must match uniquely).
+        new_str: The replacement text.
+        replace_all: Whether to replace all occurrences. Defaults to False.
 
     Returns:
-        A confirmation message indicating the changes made.
+        Summary of the changes made.
     """
-    if file_path not in ctx.deps.files:
-        return f'Error: File {file_path} does not exist'
+    if path not in ctx.deps.files:
+        return f'Error: File {path} does not exist'
 
-    content = ctx.deps.files[file_path]
-    changes_made: list[str] = []
+    content = ctx.deps.files[path]
 
-    for hunk in diff.hunks:
-        if hunk.search in content:
-            content = content.replace(hunk.search, hunk.replace, 1)
-            changes_made.append(f'Replaced "{hunk.search[:30]}..." with "{hunk.replace[:30]}..."')
-        else:
-            changes_made.append(f'Warning: Could not find "{hunk.search[:30]}..." in file')
+    if old_str not in content:
+        return f'Error: Could not find "{old_str[:50]}..." in {path}'
 
-    ctx.deps.files[file_path] = content
-
-    # Track the diff for this file
-    if file_path in ctx.deps.diffs:
-        ctx.deps.diffs[file_path].hunks.extend(diff.hunks)
+    if replace_all:
+        count = content.count(old_str)
+        content = content.replace(old_str, new_str)
+        summary = f'Replaced {count} occurrence(s)'
     else:
-        ctx.deps.diffs[file_path] = diff
+        content = content.replace(old_str, new_str, 1)
+        summary = 'Replaced 1 occurrence'
 
-    return f'Edited file: {file_path}. Changes: {"; ".join(changes_made)}'
+    ctx.deps.files[path] = content
+    return f'Edited {path}: {summary}'
 
 
 @agent.tool
@@ -152,17 +156,13 @@ def delete_file(ctx: RunContext[AppDependencies], file_path: str) -> str:
         return f'Error: File {file_path} does not exist'
 
     del ctx.deps.files[file_path]
-
-    # Track the deletion as a special diff
-    ctx.deps.diffs[file_path] = Diff(hunks=[DiffHunk(search='<entire file>', replace='<deleted>')])
-
     return f'Deleted file: {file_path}'
 
 
 async def run_agent(
     prompt: str,
     existing_files: dict[str, str] | None = None,
-) -> tuple[dict[str, str], dict[str, str], dict[str, Diff], str]:
+) -> tuple[dict[str, str], dict[str, str], str]:
     """Run the React builder agent.
 
     Args:
@@ -170,12 +170,11 @@ async def run_agent(
         existing_files: Optional dict of existing files when editing an app.
 
     Returns:
-        A tuple of (files, compiled_files, diffs, summary) where:
+        A tuple of (files, compiled_files, summary) where:
         - files: The final state of all source files
         - compiled_files: The compiled js/css/sourcemap files from the build
-        - diffs: Any diffs that were applied (for edit operations)
         - summary: The summary string from the model
     """
     deps = AppDependencies(files=existing_files.copy() if existing_files else {})
     result = await agent.run(prompt, deps=deps)
-    return deps.files, deps.compiled_files, deps.diffs, result.output
+    return deps.files, deps.compiled_files, result.output

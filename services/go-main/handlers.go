@@ -150,10 +150,9 @@ type EditRequest struct {
 
 // EditResponse is the response for editing an app.
 type EditResponse struct {
-	Summary string          `json:"summary"`
-	Files   []string        `json:"files"`
-	Diffs   map[string]Diff `json:"diffs"`
-	ViewURL string          `json:"view_url"`
+	Summary string   `json:"summary"`
+	Files   []string `json:"files"`
+	ViewURL string   `json:"view_url"`
 }
 
 // HandleEdit edits an existing app.
@@ -213,7 +212,6 @@ func (h *Handlers) HandleEdit(w http.ResponseWriter, r *http.Request) {
 	resp := EditResponse{
 		Summary: result.Summary,
 		Files:   fileList,
-		Diffs:   result.Diffs,
 		ViewURL: "/" + projectID + "/view",
 	}
 

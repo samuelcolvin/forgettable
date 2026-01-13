@@ -5,19 +5,6 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel
 
 
-class DiffHunk(BaseModel):
-    """A single search/replace operation."""
-
-    search: str
-    replace: str
-
-
-class Diff(BaseModel):
-    """Collection of changes to apply to a file."""
-
-    hunks: list[DiffHunk]
-
-
 class CreateAppRequest(BaseModel):
     """Request to create a new React app."""
 
@@ -40,9 +27,8 @@ class EditAppRequest(BaseModel):
 
 
 class EditAppResponse(BaseModel):
-    """Response containing diffs applied to files."""
+    """Response containing edited files."""
 
-    diffs: dict[str, Diff]
     files: dict[str, str]
     compiled_files: dict[str, str]
     summary: str
@@ -53,5 +39,4 @@ class AppDependencies:
     """Mutable state passed to agent tools."""
 
     files: dict[str, str] = field(default_factory=dict)
-    diffs: dict[str, Diff] = field(default_factory=dict)
     compiled_files: dict[str, str] = field(default_factory=dict)

@@ -103,7 +103,7 @@ async def cmd_create(outdir: Path, prompt: str) -> None:
     print(f'Creating app in {outdir}...')
     print(f'Prompt: {prompt}\n')
 
-    files, compiled_files, _, summary = await run_agent(prompt)
+    files, compiled_files, summary = await run_agent(prompt)
 
     outdir.mkdir(parents=True, exist_ok=True)
     write_output_files(outdir, files, compiled_files)
@@ -124,12 +124,9 @@ async def cmd_edit(app_dir: Path, prompt: str) -> None:
     existing_files = read_source_files(app_dir)
     print(f'Read {len(existing_files)} existing files')
 
-    files, compiled_files, diffs, summary = await run_agent(prompt, existing_files)
+    files, compiled_files, summary = await run_agent(prompt, existing_files)
 
     write_output_files(app_dir, files, compiled_files)
-
-    if diffs:
-        print(f'\nApplied diffs to {len(diffs)} files')
 
     print(f'\n{summary}')
 
